@@ -1,3 +1,6 @@
+
+![alt text](Screenshots/PATHOGEN.png)
+
 # 🦠 PATHOGEN — Malware Analysis Lab
 
 ![PATHOGEN Simulator](https://img.shields.io/badge/PATHOGEN-Malware_Analysis_Lab-00ff41?style=for-the-badge&logo=virustotal&logoColor=white)
