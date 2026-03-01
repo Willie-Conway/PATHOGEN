@@ -1,0 +1,1801 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PATHOGEN — Malware Analysis Lab</title>
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Orbitron:wght@400;600;700;900&family=Exo+2:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:       #010804;
+  --bg2:      #020c06;
+  --surface:  #041408;
+  --panel:    #061a0a;
+  --panel2:   #082010;
+  --border:   #0d3018;
+  --border2:  #144024;
+  --green:    #00ff41;
+  --green2:   #00cc33;
+  --green3:   #00ff4188;
+  --green-dim:#00441a;
+  --lime:     #39ff14;
+  --red:      #ff1744;
+  --red2:     #ff5252;
+  --orange:   #ff6d00;
+  --yellow:   #ffd600;
+  --cyan:     #00e5ff;
+  --purple:   #d500f9;
+  --blue:     #2979ff;
+  --text:     #c8ffd4;
+  --mid:      #4daa62;
+  --dim:      #1e5c2c;
+  --scanline: rgba(0,255,65,0.03);
+
+  --c-virus:   #00ff41;
+  --c-worm:    #00e5ff;
+  --c-trojan:  #ff6d00;
+  --c-ransom:  #ff1744;
+  --c-spy:     #d500f9;
+  --c-adware:  #ffd600;
+  --c-rootkit: #2979ff;
+  --c-botnet:  #ff5252;
+}
+
+*, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+html { scroll-behavior:smooth; }
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Exo 2', sans-serif;
+  min-height: 100vh;
+  overflow-x: hidden;
+  cursor: default;
+}
+
+body::before {
+  content:'';
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, var(--scanline) 2px, var(--scanline) 4px);
+}
+body::after {
+  content:'';
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.7) 100%);
+}
+.noise {
+  position:fixed; inset:0; z-index:0; pointer-events:none; opacity:.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+}
+
+.app { position:relative; z-index:1; display:flex; flex-direction:column; min-height:100vh; }
+
+/* ── HEADER ── */
+.header {
+  background: rgba(1,8,4,0.97);
+  border-bottom: 1px solid var(--border2);
+  padding: 0 28px;
+  position: sticky; top:0; z-index:50;
+  box-shadow: 0 0 40px rgba(0,255,65,0.06);
+}
+.header-inner { display:flex; align-items:center; gap:20px; height:58px; }
+.brand { display:flex; align-items:center; gap:12px; flex-shrink:0; }
+.brand-glyph {
+  width:36px; height:36px; border:2px solid var(--green); border-radius:4px;
+  display:flex; align-items:center; justify-content:center;
+  font-family:'Orbitron',monospace; font-size:14px; font-weight:900; color:var(--green);
+  box-shadow: 0 0 12px rgba(0,255,65,0.3), inset 0 0 12px rgba(0,255,65,0.05);
+  animation: glyphPulse 3s ease infinite;
+}
+@keyframes glyphPulse {
+  0%,100%{box-shadow:0 0 12px rgba(0,255,65,0.3),inset 0 0 12px rgba(0,255,65,0.05);}
+  50%{box-shadow:0 0 24px rgba(0,255,65,0.5),inset 0 0 20px rgba(0,255,65,0.1);}
+}
+.brand-name { font-family:'Orbitron',monospace; font-size:18px; font-weight:700; color:var(--green); letter-spacing:5px; text-shadow: 0 0 20px rgba(0,255,65,0.6); }
+.brand-sub  { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--mid); letter-spacing:2px; }
+.header-status {
+  display:flex; align-items:center; gap:6px;
+  font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--mid);
+  padding:4px 12px; border:1px solid var(--border2); border-radius:2px; background:rgba(0,255,65,0.02);
+}
+.status-led { width:6px; height:6px; border-radius:50%; background:var(--green); box-shadow: 0 0 8px var(--green); animation: ledBlink 1.2s step-end infinite; }
+@keyframes ledBlink { 0%,100%{opacity:1;} 50%{opacity:.2;} }
+.header-right { margin-left:auto; display:flex; gap:10px; align-items:center; }
+.threat-chip { font-family:'Share Tech Mono',monospace; font-size:10px; padding:3px 10px; border-radius:2px; border:1px solid; display:flex; align-items:center; gap:5px; }
+.tc-red { color:var(--red); border-color:rgba(255,23,68,.4); background:rgba(255,23,68,.06); }
+.tc-grn { color:var(--green); border-color:rgba(0,255,65,.25); background:rgba(0,255,65,.04); }
+
+/* ── NAV ── */
+.nav { background:rgba(1,8,4,0.96); border-bottom:1px solid var(--border); display:flex; padding:0 28px; overflow-x:auto; scrollbar-width:none; }
+.nav::-webkit-scrollbar { display:none; }
+.nav-btn {
+  font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:1.5px;
+  padding:11px 20px; color:var(--dim); cursor:pointer; border:none; background:none;
+  text-transform:uppercase; border-bottom:2px solid transparent; transition:all .2s; white-space:nowrap;
+  display:flex; align-items:center; gap:7px;
+}
+.nav-btn:hover { color:var(--mid); }
+.nav-btn.active { color:var(--green); border-bottom-color:var(--green); background:rgba(0,255,65,0.03); text-shadow:0 0 10px rgba(0,255,65,0.5); }
+
+/* ── MAIN ── */
+.main { flex:1; overflow-y:auto; }
+.view { display:none; padding:32px 28px 80px; }
+.view.active { display:block; }
+
+/* ── SECTION HEADERS ── */
+.sec-hdr { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--green); letter-spacing:4px; text-transform:uppercase; display:flex; align-items:center; gap:14px; margin-bottom:28px; }
+.sec-hdr::before { content:'> '; color:var(--green2); }
+.sec-hdr::after { content:''; flex:1; height:1px; background:linear-gradient(90deg,var(--border2),transparent); }
+.sec-title { font-family:'Orbitron',monospace; font-size:clamp(18px,3vw,26px); font-weight:700; color:var(--green); margin-bottom:6px; text-shadow:0 0 20px rgba(0,255,65,0.3); }
+.sec-desc { font-size:13px; color:var(--mid); line-height:1.7; margin-bottom:28px; }
+
+/* ── SPECIMEN CARDS ── */
+.specimen-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+.specimen-card { background:var(--surface); border:1px solid var(--border); border-radius:4px; cursor:pointer; transition:all .2s; position:relative; overflow:hidden; }
+.sc-header { padding:18px 18px 14px; display:flex; align-items:flex-start; gap:14px; }
+.sc-icon { width:48px; height:48px; border-radius:4px; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; border:1px solid; }
+.sc-meta { flex:1; }
+.sc-name { font-family:'Orbitron',monospace; font-size:14px; font-weight:700; margin-bottom:4px; }
+.sc-type { font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; text-transform:uppercase; padding:2px 8px; border-radius:2px; border:1px solid; display:inline-block; }
+.sc-threat { margin-left:auto; text-align:right; flex-shrink:0; }
+.threat-level { font-family:'Orbitron',monospace; font-size:20px; font-weight:700; line-height:1; }
+.threat-label { font-family:'Share Tech Mono',monospace; font-size:8px; letter-spacing:1.5px; color:var(--dim); }
+.sc-desc { padding:0 18px 14px; font-size:12px; color:var(--mid); line-height:1.65; }
+.sc-stats { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid var(--border); }
+.sc-stat { padding:10px 12px; border-right:1px solid var(--border); text-align:center; }
+.sc-stat:last-child { border-right:none; }
+.sc-stat-val { font-family:'Share Tech Mono',monospace; font-size:13px; font-weight:600; }
+.sc-stat-lbl { font-size:9px; color:var(--dim); letter-spacing:1px; margin-top:2px; }
+.sc-footer { padding:10px 18px; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); border-top:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+.sc-btn { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1px; padding:5px 14px; border:1px solid; border-radius:2px; cursor:pointer; transition:all .2s; background:none; text-transform:uppercase; }
+
+/* malware type themes — use CSS custom property per-card */
+.type-virus   { --c:#00ff41; }
+.type-worm    { --c:#00e5ff; }
+.type-trojan  { --c:#ff6d00; }
+.type-ransom  { --c:#ff1744; }
+.type-spy     { --c:#d500f9; }
+.type-adware  { --c:#ffd600; }
+.type-rootkit { --c:#2979ff; }
+.type-botnet  { --c:#ff5252; }
+
+.specimen-card[class*="type-"] .sc-icon         { background:rgba(0,0,0,0.3); border-color:rgba(128,128,128,0.3); }
+.specimen-card[class*="type-"] .sc-name         { color:var(--c); }
+.specimen-card[class*="type-"] .sc-type         { color:var(--c); border-color:rgba(128,128,128,0.3); background:rgba(0,0,0,0.3); }
+.specimen-card[class*="type-"] .threat-level    { color:var(--c); }
+.specimen-card[class*="type-"] .sc-btn          { color:var(--c); border-color:rgba(128,128,128,0.4); }
+.specimen-card[class*="type-"] .sc-btn:hover    { background:rgba(128,128,128,0.12); }
+.specimen-card[class*="type-"]:hover            { border-color:rgba(128,128,128,0.5); box-shadow:0 8px 32px rgba(0,0,0,0.4); }
+
+/* ══════════════════════════════
+   INFECTION SIMULATOR
+══════════════════════════════ */
+.sim-controls { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:20px; align-items:center; }
+.sim-select { font-family:'Share Tech Mono',monospace; font-size:11px; padding:8px 14px; border-radius:2px; border:1px solid var(--border2); background:var(--panel); color:var(--green); cursor:pointer; letter-spacing:1px; outline:none; }
+.sim-select option { background:var(--panel); }
+.sim-btn { font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:1.5px; padding:8px 18px; border-radius:2px; border:1px solid; cursor:pointer; text-transform:uppercase; transition:all .2s; }
+.sim-btn-go { color:#000; background:var(--green); border-color:var(--green); }
+.sim-btn-go:hover { background:var(--lime); box-shadow:0 0 16px rgba(0,255,65,0.4); }
+.sim-btn-reset { color:var(--mid); background:transparent; border-color:var(--border2); }
+.sim-btn-reset:hover { color:var(--text); border-color:var(--mid); }
+.sim-speed-label { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); }
+.sim-speed { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--green); padding:7px 10px; background:var(--panel); border:1px solid var(--border2); border-radius:2px; width:60px; outline:none; }
+.sim-canvas-wrap { display:grid; grid-template-columns:1fr 300px; gap:14px; }
+.sim-canvas-box { background:var(--bg2); border:1px solid var(--border2); border-radius:4px; position:relative; overflow:hidden; }
+#networkCanvas { display:block; width:100%; height:420px; }
+.sim-legend { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:16px; }
+.sl-title { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--mid); letter-spacing:2px; margin-bottom:14px; }
+.sl-item { display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); font-size:12px; color:var(--mid); }
+.sl-item:last-of-type { border-bottom:none; }
+.sl-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.sl-label { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--text); }
+.sim-stats { margin-top:14px; display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+.sim-stat { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:12px; text-align:center; }
+.sim-stat-val { font-family:'Share Tech Mono',monospace; font-size:20px; font-weight:600; }
+.sim-stat-lbl { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--dim); letter-spacing:1.5px; margin-top:4px; }
+.sim-log { background:var(--bg2); border:1px solid var(--border); border-radius:4px; margin-top:14px; padding:12px 14px; height:130px; overflow-y:auto; font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--mid); line-height:1.8; }
+.sim-log-entry { animation: logIn .2s ease; }
+@keyframes logIn { from{opacity:0;transform:translateX(-6px);} to{opacity:1;transform:translateX(0);} }
+.log-time { color:var(--dim); }
+.log-crit { color:var(--red); }
+.log-warn { color:var(--yellow); }
+.log-ok   { color:var(--green); }
+
+/* ══════════════════════════════
+   IDENTIFICATION CHALLENGE
+══════════════════════════════ */
+.id-layout { display:grid; grid-template-columns:1fr 340px; gap:16px; }
+.terminal-box { background:var(--bg2); border:1px solid var(--border2); border-radius:4px; overflow:hidden; }
+.tb-header { background:var(--panel); padding:8px 14px; display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); }
+.tb-dots { display:flex; gap:5px; }
+.tb-dot { width:10px; height:10px; border-radius:50%; }
+.tb-title { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--mid); margin-left:6px; letter-spacing:1px; }
+.terminal-body { padding:16px; font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--green2); line-height:1.9; min-height:280px; white-space:pre-wrap; word-break:break-word; }
+.terminal-body .t-prompt { color:var(--green); }
+.terminal-body .t-red { color:var(--red); }
+.terminal-body .t-yellow { color:var(--yellow); }
+.terminal-body .t-cyan { color:var(--cyan); }
+.terminal-body .t-dim { color:var(--dim); }
+.terminal-body .t-blink { animation:tBlink .8s step-end infinite; }
+@keyframes tBlink { 0%,100%{opacity:1;} 50%{opacity:0;} }
+.id-panel { display:flex; flex-direction:column; gap:12px; }
+.id-question-box { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:16px; }
+.id-q-label { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--green); letter-spacing:3px; margin-bottom:10px; }
+.id-q-text { font-size:13px; color:var(--text); line-height:1.6; margin-bottom:14px; font-weight:500; }
+.id-choices { display:flex; flex-direction:column; gap:7px; }
+.id-choice { display:flex; align-items:center; gap:10px; padding:9px 12px; border:1px solid var(--border); border-radius:3px; cursor:pointer; transition:all .15s; font-size:12px; color:var(--mid); background:var(--panel); font-family:'Share Tech Mono',monospace; letter-spacing:.5px; }
+.id-choice:hover { border-color:var(--border2); color:var(--text); }
+.id-choice.selected { border-color:var(--green); color:var(--green); background:rgba(0,255,65,.04); }
+.id-choice.correct { border-color:var(--green)!important; color:var(--green)!important; background:rgba(0,255,65,.08)!important; }
+.id-choice.wrong   { border-color:var(--red)!important; color:var(--red)!important; background:rgba(255,23,68,.08)!important; }
+.id-choice.disabled { pointer-events:none; }
+.id-choice-key { font-family:'Share Tech Mono',monospace; font-size:9px; width:18px; height:18px; border:1px solid var(--border2); border-radius:2px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.id-choice.selected .id-choice-key { border-color:var(--green); color:var(--green); }
+.id-choice.correct  .id-choice-key { border-color:var(--green); color:var(--green); }
+.id-choice.wrong    .id-choice-key { border-color:var(--red); color:var(--red); }
+.id-feedback { background:var(--panel); border-radius:3px; padding:12px; font-size:12px; color:var(--mid); line-height:1.65; display:none; border-left:3px solid; }
+.id-feedback.show { display:block; }
+.id-feedback.ok  { border-color:var(--green); }
+.id-feedback.err { border-color:var(--red); }
+.id-feedback-label { font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; margin-bottom:5px; }
+.id-progress { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px; display:flex; align-items:center; gap:14px; margin-bottom:14px; }
+.id-prog-bar-wrap { flex:1; height:4px; background:var(--border2); border-radius:2px; overflow:hidden; }
+.id-prog-bar { height:100%; background:var(--green); border-radius:2px; transition:width .4s; }
+.id-prog-label { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); white-space:nowrap; }
+.id-score-label { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--green); white-space:nowrap; }
+
+/* ══════════════════════════════
+   DISSECTION OVERLAY  ← FIXED
+══════════════════════════════ */
+#dissect-overlay {
+  display:none; position:fixed; inset:0; z-index:100;
+  background:rgba(1,8,4,0.97); overflow-y:auto; backdrop-filter:blur(4px);
+}
+.dissect-header {
+  background:rgba(1,8,4,0.98); border-bottom:1px solid var(--border2);
+  padding:14px 28px; display:flex; align-items:center; gap:16px;
+  position:sticky; top:0; z-index:10;
+  box-shadow: 0 2px 20px rgba(0,0,0,0.8);
+}
+.dissect-body { max-width:960px; margin:0 auto; padding:36px 28px 60px; }
+
+.dissect-hero {
+  display:grid; grid-template-columns:auto 1fr; gap:24px; margin-bottom:32px; align-items:start;
+}
+.dissect-icon-large {
+  width:80px; height:80px; border-radius:6px;
+  display:flex; align-items:center; justify-content:center;
+  font-size:36px; border:2px solid; flex-shrink:0;
+}
+.dissect-name {
+  font-family:'Orbitron',monospace; font-size:clamp(24px,4vw,40px); font-weight:900;
+  letter-spacing:-1px; line-height:1; margin-bottom:8px;
+}
+.dissect-tagline { font-size:14px; color:var(--mid); line-height:1.6; margin-bottom:12px; }
+.dissect-tags { display:flex; gap:8px; flex-wrap:wrap; }
+.d-tag { font-family:'Share Tech Mono',monospace; font-size:9px; letter-spacing:2px; padding:3px 10px; border-radius:2px; border:1px solid var(--border2); color:var(--mid); background:var(--panel); text-transform:uppercase; }
+
+.dissect-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:20px; }
+.d-card { background:var(--surface); border:1px solid var(--border); border-radius:4px; overflow:hidden; }
+.d-card-hdr { padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--border); font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--green); letter-spacing:3px; text-transform:uppercase; }
+.d-card-body { padding:14px 16px; }
+.d-list { display:flex; flex-direction:column; gap:8px; }
+.d-list-item { display:flex; align-items:flex-start; gap:10px; font-size:12px; color:var(--mid); line-height:1.55; }
+.d-list-dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+
+.lifecycle-steps { display:flex; flex-direction:column; gap:10px; }
+.lc-step { display:flex; gap:12px; padding:10px 12px; background:var(--panel); border-radius:3px; border-left:3px solid; }
+.lc-num { font-family:'Orbitron',monospace; font-size:12px; font-weight:700; min-width:20px; flex-shrink:0; }
+.lc-title { font-size:12px; font-weight:600; color:var(--text); margin-bottom:3px; }
+.lc-desc { font-size:11px; color:var(--mid); line-height:1.5; }
+
+.real-world-examples { background:var(--surface); border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-bottom:20px; }
+.rwe-row { display:grid; grid-template-columns:140px 1fr 100px 120px; padding:11px 16px; border-bottom:1px solid var(--border); align-items:center; gap:12px; font-size:12px; transition:background .15s; }
+.rwe-row:hover { background:rgba(0,255,65,.02); }
+.rwe-row:last-child { border-bottom:none; }
+.rwe-hdr { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--dim); letter-spacing:2px; background:var(--panel); }
+.rwe-name { color:var(--text); font-weight:600; }
+.rwe-desc { color:var(--mid); line-height:1.4; }
+.rwe-year { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--dim); }
+
+.defenses-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(200px,1fr)); gap:10px; }
+.defense-chip { background:var(--panel); border:1px solid var(--border2); border-radius:3px; padding:10px 12px; font-size:12px; color:var(--mid); display:flex; align-items:flex-start; gap:8px; line-height:1.5; }
+.defense-icon { font-size:14px; flex-shrink:0; margin-top:1px; }
+
+.dissect-section-hdr {
+  font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--green);
+  letter-spacing:4px; text-transform:uppercase;
+  display:flex; align-items:center; gap:14px; margin:20px 0 12px;
+}
+.dissect-section-hdr::before { content:'> '; color:var(--green2); }
+.dissect-section-hdr::after  { content:''; flex:1; height:1px; background:linear-gradient(90deg,var(--border2),transparent); }
+
+/* ══════════════════════════════
+   DEFENSE MATCHING GAME
+══════════════════════════════ */
+.match-layout { display:grid; grid-template-columns:1fr 1fr; gap:20px; }
+.match-col-title { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--mid); letter-spacing:2px; text-transform:uppercase; margin-bottom:12px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+.match-item { background:var(--surface); border:1px solid var(--border); border-radius:3px; padding:12px 14px; margin-bottom:8px; cursor:pointer; transition:all .2s; font-size:13px; }
+.match-item:hover { border-color:var(--border2); }
+.match-item.selected { border-color:var(--green); background:rgba(0,255,65,.04); color:var(--green); }
+.match-item.matched { border-color:var(--green)!important; background:rgba(0,255,65,.08)!important; pointer-events:none; opacity:.7; }
+.match-item.wrong-flash { animation:wrongFlash .4s ease; }
+@keyframes wrongFlash { 0%,100%{border-color:var(--border);} 50%{border-color:var(--red);box-shadow:0 0 10px rgba(255,23,68,.3);} }
+.match-score-bar { background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:14px 18px; margin-top:16px; display:flex; align-items:center; gap:16px; }
+.match-score-val { font-family:'Orbitron',monospace; font-size:24px; color:var(--green); font-weight:700; }
+.match-score-lbl { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); letter-spacing:2px; }
+.match-hint { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); padding:10px 14px; border:1px solid var(--border); border-radius:3px; margin-top:10px; }
+
+/* ══════════════════════════════
+   KNOWLEDGE QUIZ
+══════════════════════════════ */
+.quiz-wrap { max-width:760px; }
+.quiz-progress { display:flex; align-items:center; gap:14px; margin-bottom:24px; }
+.qp-bar-wrap { flex:1; height:3px; background:var(--border2); border-radius:2px; overflow:hidden; }
+.qp-bar { height:100%; background:var(--green); border-radius:2px; transition:width .4s; }
+.qp-label { font-family:'Share Tech Mono',monospace; font-size:10px; color:var(--dim); white-space:nowrap; }
+.qp-score { font-family:'Share Tech Mono',monospace; font-size:11px; color:var(--green); white-space:nowrap; }
+.quiz-card { background:var(--surface); border:1px solid var(--border); border-radius:4px; overflow:hidden; margin-bottom:12px; animation:fadeUp .3s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px);} to{opacity:1;transform:translateY(0);} }
+.quiz-card.q-correct { border-color:rgba(0,255,65,.4); }
+.quiz-card.q-wrong   { border-color:rgba(255,23,68,.4); }
+.q-hdr { padding:14px 18px 12px; display:flex; gap:12px; align-items:flex-start; }
+.q-num { font-family:'Share Tech Mono',monospace; font-size:9px; color:var(--green); background:rgba(0,255,65,.08); border:1px solid rgba(0,255,65,.2); padding:2px 8px; border-radius:2px; flex-shrink:0; margin-top:2px; }
+.q-text { font-size:13.5px; font-weight:500; color:var(--text); line-height:1.6; }
+.q-opts { padding:0 18px 8px; display:flex; flex-direction:column; gap:6px; }
+.q-opt { display:flex; align-items:flex-start; gap:10px; padding:9px 12px; border:1px solid var(--border); border-radius:3px; cursor:pointer; transition:all .15s; font-size:12px; color:var(--mid); background:var(--panel); font-family:'Share Tech Mono',monospace; }
+.q-opt:hover { border-color:var(--border2); color:var(--text); }
+.q-opt.sel  { border-color:var(--green); color:var(--green); background:rgba(0,255,65,.04); }
+.q-opt.corr { border-color:var(--green)!important; color:var(--green)!important; background:rgba(0,255,65,.08)!important; }
+.q-opt.wrng { border-color:var(--red)!important; color:var(--red)!important; background:rgba(255,23,68,.08)!important; }
+.q-opt.dis  { pointer-events:none; }
+.q-key { font-family:'Share Tech Mono',monospace; font-size:9px; min-width:17px; height:17px; border:1px solid var(--border2); border-radius:2px; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:1px; }
+.q-opt.sel .q-key  { border-color:var(--green); color:var(--green); }
+.q-opt.corr .q-key { border-color:var(--green); color:var(--green); }
+.q-opt.wrng .q-key { border-color:var(--red); color:var(--red); }
+.q-foot { padding:8px 18px 14px; display:flex; align-items:center; gap:12px; }
+.q-check-btn { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1.5px; padding:7px 16px; border-radius:2px; border:1px solid var(--green); background:rgba(0,255,65,.1); color:var(--green); cursor:pointer; transition:all .2s; text-transform:uppercase; }
+.q-check-btn:hover { background:rgba(0,255,65,.18); }
+.q-check-btn:disabled { opacity:.25; cursor:default; pointer-events:none; }
+.q-fb { font-family:'Share Tech Mono',monospace; font-size:10px; display:none; }
+.q-fb.show { display:block; }
+.q-fb.ok  { color:var(--green); }
+.q-fb.err { color:var(--red); }
+
+/* ── GENERIC BUTTONS ── */
+.g-btn { font-family:'Share Tech Mono',monospace; font-size:11px; letter-spacing:1px; padding:9px 20px; border-radius:2px; border:none; cursor:pointer; transition:all .2s; text-transform:uppercase; }
+.g-btn-primary { background:var(--green); color:#000; }
+.g-btn-primary:hover { background:var(--lime); box-shadow:0 0 14px rgba(0,255,65,.4); }
+.g-btn-outline { background:transparent; border:1px solid var(--border2); color:var(--mid); }
+.g-btn-outline:hover { border-color:var(--green); color:var(--green); }
+.close-btn { font-family:'Share Tech Mono',monospace; font-size:10px; letter-spacing:1px; padding:7px 16px; border-radius:2px; border:1px solid var(--border2); background:none; color:var(--mid); cursor:pointer; transition:all .2s; text-transform:uppercase; }
+.close-btn:hover { border-color:var(--green); color:var(--green); }
+
+/* ── SCROLLBAR ── */
+::-webkit-scrollbar { width:5px; height:5px; }
+::-webkit-scrollbar-track { background:var(--bg); }
+::-webkit-scrollbar-thumb { background:var(--border2); border-radius:3px; }
+
+/* ── GRID UTILITIES ── */
+.g2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.g3 { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+.g4 { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+.mb14{margin-bottom:14px;} .mb20{margin-bottom:20px;} .mb28{margin-bottom:28px;}
+.mt14{margin-top:14px;}    .mt20{margin-top:20px;}
+
+@media(max-width:860px){
+  .sim-canvas-wrap,.dissect-grid,.match-layout,.id-layout { grid-template-columns:1fr; }
+  .rwe-row { grid-template-columns:1fr 1fr; }
+  .dissect-hero { grid-template-columns:1fr; }
+}
+@media(max-width:600px){
+  .g2,.g3,.g4 { grid-template-columns:1fr; }
+  .sim-stats { grid-template-columns:repeat(2,1fr); }
+  .view { padding:20px 14px 60px; }
+}
+</style>
+</head>
+<body>
+<div class="noise"></div>
+
+<header class="header">
+  <div class="header-inner">
+    <div class="brand">
+      <div class="brand-glyph">☣</div>
+      <div>
+        <div class="brand-name">PATHOGEN</div>
+        <div class="brand-sub">MALWARE ANALYSIS LABORATORY</div>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="status-led"></div>
+      SANDBOX ACTIVE · ISOLATED ENVIRONMENT
+    </div>
+    <div class="header-right">
+      <div class="threat-chip tc-red">⬥ 8 SPECIMENS LOADED</div>
+      <div class="threat-chip tc-grn">✓ SAFE · SIMULATED ONLY</div>
+    </div>
+  </div>
+</header>
+
+<nav class="nav">
+  <button class="nav-btn active" onclick="showView('specimens')">☣ Specimen Lab</button>
+  <button class="nav-btn" onclick="showView('simulator')">◈ Infection Simulator</button>
+  <button class="nav-btn" onclick="showView('identify')">⊞ Identification Challenge</button>
+  <button class="nav-btn" onclick="showView('defense')">⊛ Defense Matching</button>
+  <button class="nav-btn" onclick="showView('quiz')">◉ Knowledge Quiz</button>
+</nav>
+
+<div class="main">
+
+<!-- ═══ SPECIMEN LAB ═══ -->
+<div class="view active" id="view-specimens">
+  <div class="sec-hdr">SPECIMEN CATALOG // 8 MALWARE TYPES IDENTIFIED</div>
+  <div class="sec-title">Malware Specimen Lab</div>
+  <div class="sec-desc">Select any specimen to enter the dissection lab — a full technical breakdown including behavior, lifecycle, real-world examples, and defenses.</div>
+  <div class="specimen-grid" id="specimen-grid"></div>
+</div>
+
+<!-- ═══ INFECTION SIMULATOR ═══ -->
+<div class="view" id="view-simulator">
+  <div class="sec-hdr">INFECTION SPREAD SIMULATION // NETWORK VISUALIZATION</div>
+  <div class="sec-title">Infection Simulator</div>
+  <div class="sec-desc">Watch how different malware types propagate across a simulated network of 20 nodes. Each malware type has unique spread behavior, speed, and targeting logic.</div>
+  <div class="sim-controls">
+    <select class="sim-select" id="sim-malware-select">
+      <option value="virus">Computer Virus</option>
+      <option value="worm">Network Worm</option>
+      <option value="trojan">Trojan Horse</option>
+      <option value="ransom">Ransomware</option>
+      <option value="spy">Spyware</option>
+      <option value="rootkit">Rootkit</option>
+      <option value="botnet">Botnet</option>
+      <option value="adware">Adware</option>
+    </select>
+    <button class="sim-btn sim-btn-go" onclick="startSimulation()">▶ RUN SIMULATION</button>
+    <button class="sim-btn sim-btn-reset" onclick="resetSimulation()">↺ RESET</button>
+    <span class="sim-speed-label">SPEED:</span>
+    <input type="number" class="sim-speed" id="sim-speed" value="1" min="1" max="5">
+  </div>
+  <div class="sim-canvas-wrap">
+    <div class="sim-canvas-box"><canvas id="networkCanvas"></canvas></div>
+    <div class="sim-legend">
+      <div class="sl-title">// NODE STATUS LEGEND</div>
+      <div class="sl-item"><div class="sl-dot" style="background:#4daa62;box-shadow:0 0 6px #4daa62"></div><div><div class="sl-label">CLEAN</div><div style="font-size:10px;color:var(--dim);margin-top:1px;">Uninfected node</div></div></div>
+      <div class="sl-item"><div class="sl-dot" style="background:#ff6d00;box-shadow:0 0 6px #ff6d00"></div><div><div class="sl-label">PATIENT ZERO</div><div style="font-size:10px;color:var(--dim);margin-top:1px;">Initial infection source</div></div></div>
+      <div class="sl-item"><div class="sl-dot" style="background:#ff1744;box-shadow:0 0 8px #ff1744"></div><div><div class="sl-label">INFECTED</div><div style="font-size:10px;color:var(--dim);margin-top:1px;">Actively compromised</div></div></div>
+      <div class="sl-item"><div class="sl-dot" style="background:#2979ff;box-shadow:0 0 6px #2979ff"></div><div><div class="sl-label">QUARANTINED</div><div style="font-size:10px;color:var(--dim);margin-top:1px;">Isolated by AV/EDR</div></div></div>
+      <div class="sl-item"><div class="sl-dot" style="background:#ffd600;box-shadow:0 0 6px #ffd600"></div><div><div class="sl-label">SPREADING</div><div style="font-size:10px;color:var(--dim);margin-top:1px;">Actively propagating</div></div></div>
+      <div class="sl-item"><div class="sl-dot" style="background:#d500f9;box-shadow:0 0 6px #d500f9"></div><div><div class="sl-label">C2 BEACON</div><div style="font-size:10px;color:var(--dim);margin-top:1px;">Calling home to C2 server</div></div></div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+        <div class="sl-title" style="margin-bottom:8px;">// BEHAVIOR NOTES</div>
+        <div id="sim-behavior-note" style="font-size:11px;color:var(--mid);line-height:1.7;font-family:'Share Tech Mono',monospace;">Select a malware type and run the simulation to see behavioral notes.</div>
+      </div>
+    </div>
+  </div>
+  <div class="sim-stats">
+    <div class="sim-stat"><div class="sim-stat-val" id="stat-clean" style="color:var(--green)">20</div><div class="sim-stat-lbl">CLEAN</div></div>
+    <div class="sim-stat"><div class="sim-stat-val" id="stat-infected" style="color:var(--red)">0</div><div class="sim-stat-lbl">INFECTED</div></div>
+    <div class="sim-stat"><div class="sim-stat-val" id="stat-quarantine" style="color:var(--blue)">0</div><div class="sim-stat-lbl">QUARANTINED</div></div>
+    <div class="sim-stat"><div class="sim-stat-val" id="stat-time" style="color:var(--yellow)">0.0s</div><div class="sim-stat-lbl">ELAPSED</div></div>
+  </div>
+  <div class="sim-log" id="sim-log"><div style="color:var(--dim)">// Simulation log — run a simulation to begin...</div></div>
+</div>
+
+<!-- ═══ IDENTIFICATION CHALLENGE ═══ -->
+<div class="view" id="view-identify">
+  <div class="sec-hdr">MALWARE IDENTIFICATION CHALLENGE</div>
+  <div class="sec-title">Identification Challenge</div>
+  <div class="sec-desc">Analyze real-world system logs and behavioral indicators. Identify the malware type based on evidence — just like a real analyst would.</div>
+  <div class="id-progress">
+    <div class="id-prog-bar-wrap"><div class="id-prog-bar" id="id-prog-bar" style="width:0%"></div></div>
+    <div class="id-prog-label" id="id-prog-label">0 of 8 completed</div>
+    <div class="id-score-label" id="id-score-label">Score: 0/8</div>
+  </div>
+  <div class="id-layout">
+    <div>
+      <div class="terminal-box">
+        <div class="tb-header">
+          <div class="tb-dots">
+            <div class="tb-dot" style="background:#ff5f57"></div>
+            <div class="tb-dot" style="background:#febc2e"></div>
+            <div class="tb-dot" style="background:#28c840"></div>
+          </div>
+          <div class="tb-title" id="id-terminal-title">INCIDENT_LOG_001.txt</div>
+        </div>
+        <div class="terminal-body" id="id-terminal"></div>
+      </div>
+    </div>
+    <div class="id-panel">
+      <div class="id-question-box">
+        <div class="id-q-label">// ANALYST TASK — IDENTIFY THREAT</div>
+        <div class="id-q-text" id="id-question-text">Based on the system log and behavioral indicators, what type of malware is responsible for this incident?</div>
+        <div class="id-choices" id="id-choices"></div>
+        <div class="id-feedback" id="id-feedback"></div>
+        <div style="margin-top:12px;display:flex;gap:8px;">
+          <button class="g-btn g-btn-primary" id="id-check-btn" onclick="checkIdAnswer()" disabled>SUBMIT ANALYSIS</button>
+          <button class="g-btn g-btn-outline" id="id-next-btn" onclick="nextIdChallenge()" style="display:none">NEXT CASE →</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ DEFENSE MATCHING ═══ -->
+<div class="view" id="view-defense">
+  <div class="sec-hdr">DEFENSE MATCHING EXERCISE</div>
+  <div class="sec-title">Defense Matching Lab</div>
+  <div class="sec-desc">Match each malware type to its most effective primary defense. Click a malware type, then click the correct defense.</div>
+  <div class="match-score-bar" style="margin-bottom:16px;">
+    <div><div class="match-score-val" id="match-score">0/8</div><div class="match-score-lbl">MATCHED</div></div>
+    <div style="margin-left:auto;"><button class="g-btn g-btn-primary" onclick="resetMatch()">↺ RESET</button></div>
+  </div>
+  <div class="match-hint" id="match-hint">// Select a malware type from the left column, then click the matching defense on the right.</div>
+  <div class="match-layout" style="margin-top:12px;">
+    <div><div class="match-col-title">MALWARE TYPES</div><div id="match-threats"></div></div>
+    <div><div class="match-col-title">PRIMARY DEFENSES</div><div id="match-defenses"></div></div>
+  </div>
+</div>
+
+<!-- ═══ QUIZ ═══ -->
+<div class="view" id="view-quiz">
+  <div class="sec-hdr">KNOWLEDGE ASSESSMENT // 12 QUESTIONS</div>
+  <div class="sec-title">Knowledge Quiz</div>
+  <div class="sec-desc">Test your understanding of malware types, behaviors, and defenses. Each question includes a detailed explanation.</div>
+  <div class="quiz-wrap">
+    <div class="quiz-progress">
+      <div class="qp-bar-wrap"><div class="qp-bar" id="qp-bar" style="width:0%"></div></div>
+      <div class="qp-label" id="qp-label">0 of 12 answered</div>
+      <div class="qp-score" id="qp-score">Score: 0/12</div>
+    </div>
+    <div id="quiz-container"></div>
+  </div>
+</div>
+
+</div><!-- /main -->
+
+<!-- ══════════════════════════════
+     DISSECTION OVERLAY
+══════════════════════════════ -->
+<div id="dissect-overlay" onclick="if(event.target===this)closeDissect()">
+  <div class="dissect-header">
+    <div class="brand-glyph">☣</div>
+    <div style="font-family:'Share Tech Mono',monospace;font-size:11px;color:var(--mid);letter-spacing:2px;">DISSECTION LAB // DEEP ANALYSIS</div>
+    <button class="close-btn" style="margin-left:auto;" onclick="closeDissect()">✕ CLOSE LAB</button>
+  </div>
+  <div class="dissect-body" id="dissect-body"></div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════════════
+// COLOR RESOLUTION — maps malware ID → actual hex color
+// This is the core fix: no CSS var() strings used in JS color ops
+// ══════════════════════════════════════════════════════════
+const MALWARE_COLORS = {
+  virus:   '#00ff41',
+  worm:    '#00e5ff',
+  trojan:  '#ff6d00',
+  ransom:  '#ff1744',
+  spy:     '#d500f9',
+  adware:  '#ffd600',
+  rootkit: '#2979ff',
+  botnet:  '#ff5252',
+};
+
+// ══════════════════════════════════════════════════════════
+// Hex → rgba helper
+// ══════════════════════════════════════════════════════════
+function hexRgba(hex, alpha) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${alpha})`;
+}
+
+// ══════════════════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════════════════
+const MALWARE = [
+  {
+    id:'virus', name:'Computer Virus', icon:'🦠', type:'Self-Replicating', threat:8, css:'type-virus',
+    tagline:'Attaches to legitimate files and replicates when those files are executed. Requires human action to spread.',
+    desc:'A computer virus infects other programs or files by inserting a copy of itself. It activates when an infected file is opened — requiring user interaction to propagate.',
+    stats:{ spread:'USER-DRIVEN', stealth:'LOW', damage:'HIGH' },
+    tags:['Self-Replicating','File Infector','Requires Execution','User-Dependent'],
+    howItWorks:[
+      {title:'Attachment', desc:'Virus code inserts itself into a legitimate executable (.exe, .com) or document (macro virus).'},
+      {title:'Dormancy', desc:'The virus waits, undetected. May have trigger conditions: date, event, or specific user action.'},
+      {title:'Activation', desc:'User opens infected file. Virus code executes alongside legitimate program.'},
+      {title:'Replication', desc:'Virus scans for other executable files and injects copies of itself.'},
+      {title:'Payload', desc:'Virus executes its payload: file corruption, data theft, system damage, or displaying messages.'},
+    ],
+    indicators:[
+      'Programs take longer to load than usual',
+      'Unexpected file size increases on executable files',
+      'Hard drive activity when not actively using programs',
+      'Programs crash randomly or behave unexpectedly',
+      'Antivirus alerts on previously clean files',
+      'Missing or corrupted files',
+    ],
+    examples:[
+      {name:'CIH (Chernobyl)',year:'1998',desc:'Overwrote system BIOS and MBR on April 26th annually',impact:'$1B+ damage'},
+      {name:'Melissa',year:'1999',desc:'Macro virus in Word documents, auto-emailed to contacts',impact:'$80M damage'},
+      {name:'Brain',year:'1986',desc:'First IBM PC virus — infected floppy disk boot sectors',impact:'Worldwide spread'},
+      {name:'Jerusalem',year:'1987',desc:'Deleted programs every Friday the 13th',impact:'Widespread PC infections'},
+    ],
+    defenses:[
+      {icon:'🛡️',text:'Antivirus software with real-time scanning'},
+      {icon:'🔄',text:'Keep all software patched and updated'},
+      {icon:'⚠️',text:'Never open unexpected email attachments'},
+      {icon:'💾',text:'Disable macros by default in Office applications'},
+      {icon:'🔒',text:'User account controls and least privilege'},
+      {icon:'📋',text:'File integrity monitoring (FIM)'},
+    ],
+    simBehavior:'Spreads node-to-node only when user action is simulated. Slower spread rate than worms. Avoids network paths — spreads via shared drives.'
+  },
+  {
+    id:'worm', name:'Network Worm', icon:'🐛', type:'Self-Propagating', threat:9, css:'type-worm',
+    tagline:'Self-propagates across networks without any human interaction by exploiting system vulnerabilities.',
+    desc:'Worms replicate autonomously across networks by exploiting security vulnerabilities in operating systems or applications. No user action required — they are far more dangerous than viruses.',
+    stats:{ spread:'AUTONOMOUS', stealth:'MEDIUM', damage:'SEVERE' },
+    tags:['Self-Propagating','No User Action','Exploits Vulns','Network-Borne'],
+    howItWorks:[
+      {title:'Scanning', desc:'Worm probes network for hosts with known vulnerabilities (open ports, unpatched services).'},
+      {title:'Exploitation', desc:'Exploits discovered vulnerability to gain remote code execution on target host.'},
+      {title:'Implantation', desc:'Copies itself to the new host and begins execution immediately.'},
+      {title:'Propagation', desc:'New host begins scanning for more targets — exponential spread begins.'},
+      {title:'Payload', desc:'While spreading, executes payload: backdoor, DoS attack, DDoS botnet creation, or destruction.'},
+    ],
+    indicators:[
+      'Sudden massive increase in network traffic',
+      'Bandwidth saturation affecting all users',
+      'Multiple simultaneous connection attempts to random IPs',
+      'Systems becoming slow or unresponsive',
+      'Firewall logs showing massive outbound scanning',
+      'High CPU usage on multiple machines simultaneously',
+    ],
+    examples:[
+      {name:'Morris Worm',year:'1988',desc:'First major internet worm — infected ~6,000 machines (10% of internet)',impact:'ARPANET shutdown'},
+      {name:'ILOVEYOU',year:'2000',desc:'Email worm with social engineering, spread to 50M+ computers',impact:'$10B+ damage'},
+      {name:'Conficker',year:'2008',desc:'Exploited Windows SMB vulnerability, created massive botnet',impact:'9M+ infections'},
+      {name:'WannaCry',year:'2017',desc:'EternalBlue SMB exploit; encrypted files on 200K+ machines in 150 countries',impact:'$4B+ damage'},
+    ],
+    defenses:[
+      {icon:'🔐',text:'Patch management — never delay critical security patches'},
+      {icon:'🔥',text:'Network segmentation and properly configured firewalls'},
+      {icon:'🌐',text:'Intrusion Detection/Prevention Systems (IDS/IPS)'},
+      {icon:'📊',text:'Network traffic monitoring and anomaly detection'},
+      {icon:'🚫',text:'Disable unnecessary network services and close unused ports'},
+      {icon:'🛡️',text:'EDR (Endpoint Detection and Response) solutions'},
+    ],
+    simBehavior:'Aggressively scans and infects all reachable nodes automatically. Exponential spread — one infected node quickly becomes all nodes. Demonstrates why patching is critical.'
+  },
+  {
+    id:'trojan', name:'Trojan Horse', icon:'🐴', type:'Deceptive Malware', threat:7, css:'type-trojan',
+    tagline:'Disguises itself as legitimate software. Does not self-replicate — relies entirely on users being deceived into installing it.',
+    desc:'Trojans present themselves as legitimate or desirable software to trick users into running them. Once installed, they perform hidden malicious actions while appearing normal on the surface.',
+    stats:{ spread:'SOCIAL ENG.', stealth:'HIGH', damage:'HIGH' },
+    tags:['Disguised','Social Engineering','Non-Replicating','Backdoor Creator'],
+    howItWorks:[
+      {title:'Disguise', desc:'Packaged as useful software: games, free utilities, pirated applications, fake system tools.'},
+      {title:'Social Engineering', desc:'User is convinced to download and execute the program through phishing, fake websites, or social media.'},
+      {title:'Installation', desc:'User runs the program. The legitimate-looking component works as advertised while malicious payload installs silently.'},
+      {title:'Persistence', desc:'Trojan establishes persistence: registry keys, startup entries, scheduled tasks.'},
+      {title:'Payload', desc:'Depending on type: RAT for remote control, banking trojan for credential theft, dropper for additional malware.'},
+    ],
+    indicators:[
+      "New software you don't remember installing",
+      'Antivirus disabled or unable to update',
+      'System runs slowly or fan constantly active',
+      'Unusual network connections to unknown IPs',
+      'Browser homepage changed without permission',
+      'Pop-ups or redirects to unknown websites',
+    ],
+    examples:[
+      {name:'Zeus (Zbot)',year:'2007',desc:'Banking trojan; stole banking credentials from millions',impact:'$100M+ stolen'},
+      {name:'DarkComet RAT',year:'2012',desc:'Remote access trojan used in espionage and surveillance',impact:'Government targets'},
+      {name:'Emotet',year:'2014',desc:'Banking trojan evolved into malware distribution platform',impact:'200K+ victims'},
+      {name:'njRAT',year:'2013',desc:'Remote access trojan targeting Middle East governments',impact:'Nation-state espionage'},
+    ],
+    defenses:[
+      {icon:'🔍',text:'Only download software from official, verified sources'},
+      {icon:'📧',text:'Anti-phishing training — never click unsolicited links'},
+      {icon:'🛡️',text:'Application whitelisting — only approved software runs'},
+      {icon:'🌐',text:'Web filtering to block malicious download sites'},
+      {icon:'🔄',text:'Regular antivirus scans including behavioral detection'},
+      {icon:'👁️',text:'Network monitoring for unusual outbound connections'},
+    ],
+    simBehavior:'Appears on random nodes (simulating user downloading it). Does NOT spread automatically. Instead establishes a hidden C2 connection back to attacker infrastructure.'
+  },
+  {
+    id:'ransom', name:'Ransomware', icon:'🔒', type:'Extortion Malware', threat:10, css:'type-ransom',
+    tagline:'Encrypts victim files and demands cryptocurrency ransom for the decryption key. The most financially destructive malware category.',
+    desc:'Ransomware encrypts files or entire systems using strong cryptography and demands payment for the decryption key. Modern ransomware uses double-extortion: encrypt AND threaten to publish stolen data.',
+    stats:{ spread:'NETWORK/EMAIL', stealth:'LOW (SUDDEN)', damage:'CRITICAL' },
+    tags:['File Encryption','Extortion','Cryptocurrency','Double Extortion'],
+    howItWorks:[
+      {title:'Initial Access', desc:'Phishing email, exposed RDP, or exploited vulnerability delivers the ransomware payload.'},
+      {title:'Reconnaissance', desc:'Malware quietly maps the network, identifies valuable data, steals credentials, and disables backups.'},
+      {title:'Lateral Movement', desc:'Spreads across the network to maximize damage before triggering encryption.'},
+      {title:'Encryption Trigger', desc:'At an attacker-chosen time (often 2-4 AM), simultaneous encryption begins across all infected systems.'},
+      {title:'Ransom Note', desc:'Wallpaper changed, README files dropped in every folder with payment instructions and decryption key contact.'},
+    ],
+    indicators:[
+      'Files suddenly have new, unknown file extensions (.locked, .encrypted, .WNCRY)',
+      'Desktop wallpaper changed to ransom demand',
+      'README or DECRYPT_ME files appearing everywhere',
+      'Cannot open files — system reports file errors',
+      'Massive disk write activity (the encryption process)',
+      'Backup systems or shadow copies deleted',
+    ],
+    examples:[
+      {name:'WannaCry',year:'2017',desc:'Exploited EternalBlue; hit 150 countries including UK NHS',impact:'$4B+ damage'},
+      {name:'NotPetya',year:'2017',desc:'State-sponsored (Russia); disguised as ransomware, designed for destruction',impact:'$10B+ damage'},
+      {name:'REvil',year:'2021',desc:'RaaS group; hit Kaseya VSA affecting 1,500+ MSP clients',impact:'$70M demanded'},
+      {name:'Colonial Pipeline',year:'2021',desc:'DarkSide attack shut down East Coast fuel supply',impact:'$4.4M paid'},
+    ],
+    defenses:[
+      {icon:'💾',text:'Immutable, air-gapped backups following 3-2-1 rule'},
+      {icon:'📧',text:'Email security gateway with sandboxing'},
+      {icon:'🔐',text:'Privileged access management — no admin rights for daily use'},
+      {icon:'🌐',text:'Network segmentation to limit lateral movement'},
+      {icon:'👁️',text:'EDR with behavioral detection for encryption patterns'},
+      {icon:'🎓',text:'Security awareness training — phishing simulation'},
+    ],
+    simBehavior:'Spreads quietly at first (lateral movement phase), then simultaneously encrypts all infected nodes at once. Watch for the "quiet spread then mass lockdown" pattern — this is the double-extortion model.'
+  },
+  {
+    id:'spy', name:'Spyware', icon:'👁️', type:'Surveillance Malware', threat:7, css:'type-spy',
+    tagline:"Covertly monitors user activity — keystrokes, screenshots, communications — without the user's knowledge or consent.",
+    desc:'Spyware secretly collects information about the user and transmits it to a remote attacker. It can capture keystrokes, screenshots, webcam feeds, credentials, and browsing history.',
+    stats:{ spread:'BUNDLED/TROJAN', stealth:'VERY HIGH', damage:'SEVERE (PRIVACY)' },
+    tags:['Keylogger','Credential Theft','Surveillance','Covert Exfiltration'],
+    howItWorks:[
+      {title:'Installation', desc:'Bundled with free software (adware bundles), phishing links, or dropped by a trojan.'},
+      {title:'System Integration', desc:'Hooks into OS keyboard APIs, screen capture APIs, and browser APIs at the system level.'},
+      {title:'Covert Operation', desc:'Hides itself from task manager, antivirus, and user view. Operates silently in background.'},
+      {title:'Data Collection', desc:'Logs every keystroke, captures periodic screenshots, records clipboard contents, steals saved passwords.'},
+      {title:'Exfiltration', desc:'Periodically sends collected data to attacker C2 server via encrypted channels to avoid detection.'},
+    ],
+    indicators:[
+      'Browser homepage changes without user action',
+      'Unusual CPU or RAM usage when computer appears idle',
+      'Passwords being changed by unknown parties',
+      'Unfamiliar browser extensions or plugins',
+      'Camera or microphone LED activating unexpectedly',
+      'New toolbars or search engine changes',
+    ],
+    examples:[
+      {name:'Pegasus',year:'2016',desc:'NSO Group spyware targeting journalists, activists, leaders',impact:'1,000+ targets globally'},
+      {name:'FinFisher (FinSpy)',year:'2011',desc:'Commercial spyware sold to governments for surveillance',impact:'32+ countries deployed'},
+      {name:'DarkHotel',year:'2007',desc:'APT group targeting executives via hotel WiFi networks',impact:'Ongoing espionage'},
+      {name:'CoolWebSearch',year:'2004',desc:'Consumer spyware hijacking browsers for ad revenue',impact:'Millions of PCs'},
+    ],
+    defenses:[
+      {icon:'🔍',text:'Anti-spyware tools with behavioral detection'},
+      {icon:'📥',text:'Only install software from trusted, verified sources'},
+      {icon:'🔐',text:'Use a password manager — never type passwords directly'},
+      {icon:'📸',text:'Physical camera covers for laptops and devices'},
+      {icon:'🌐',text:'VPN usage especially on public networks'},
+      {icon:'🔄',text:'Regular security audits and installed software reviews'},
+    ],
+    simBehavior:'Infects nodes silently. Unlike other malware, infected nodes show NO obvious signs — they appear clean while secretly beaconing data back to a C2 server (shown in purple). High stealth rating.'
+  },
+  {
+    id:'adware', name:'Adware', icon:'📢', type:'Unwanted Software', threat:4, css:'type-adware',
+    tagline:'Displays unwanted advertisements and collects user data to sell to advertisers. Often the gateway for more serious malware.',
+    desc:'Adware delivers unsolicited advertisements and collects browsing data. While often considered a nuisance rather than a threat, adware can be a vector for more serious malware and privacy violations.',
+    stats:{ spread:'SOFTWARE BUNDLES', stealth:'LOW', damage:'LOW-MEDIUM' },
+    tags:['Ad Injection','Data Collection','Browser Hijack','Potentially Unwanted'],
+    howItWorks:[
+      {title:'Bundling', desc:'Packaged with legitimate "free" software installers. Default installation accepts adware agreement buried in ToS.'},
+      {title:'Browser Hooks', desc:'Installs browser extensions, modifies browser settings, changes default search engine and homepage.'},
+      {title:'Ad Injection', desc:'Injects advertisements into webpages — including replacing legitimate ads with its own.'},
+      {title:'Data Collection', desc:'Tracks every website visited, search query, and online behavior to build a profile for targeted advertising.'},
+      {title:'Data Monetization', desc:'Sells collected behavioral data to advertising networks. May redirect to affiliate links for commission.'},
+    ],
+    indicators:[
+      'Constant pop-up advertisements',
+      'Browser homepage or search engine changed',
+      'New toolbars appearing in the browser',
+      'Web pages loading slower than usual',
+      'Redirected to unknown websites while browsing',
+      'Ads appearing in unexpected places (even desktop)',
+    ],
+    examples:[
+      {name:'Fireball',year:'2017',desc:'Infected 250M+ computers; hijacked browsers for ad fraud',impact:'250M+ browsers infected'},
+      {name:'Superfish',year:'2015',desc:'Pre-installed on Lenovo PCs; intercepted HTTPS for ad injection',impact:'Millions of Lenovo users'},
+      {name:'DollarRevenue',year:'2006',desc:'Bundled with P2P software; served ads and collected data',impact:'Multi-million revenue'},
+      {name:'Gator (GAIN)',year:'2000',desc:'Early adware bundled with Kazaa, Weatherbug, others',impact:'35M+ installs'},
+    ],
+    defenses:[
+      {icon:'📋',text:'Read installation dialogs carefully — uncheck bundled software'},
+      {icon:'🚫',text:'Ad blocker browser extensions (uBlock Origin, etc.)'},
+      {icon:'🛡️',text:'Anti-malware with PUA (Potentially Unwanted Application) detection'},
+      {icon:'🔧',text:'Regular browser extension and settings audit'},
+      {icon:'💻',text:'Avoid unofficial "free" software download sites'},
+      {icon:'🌐',text:'DNS filtering to block known adware domains'},
+    ],
+    simBehavior:'Low severity spread. Infects nodes quickly but causes minimal disruption — mainly browser changes. Often noticed last due to its non-destructive nature. Acts as a gateway for more serious threats.'
+  },
+  {
+    id:'rootkit', name:'Rootkit', icon:'🔑', type:'Stealth Malware', threat:9, css:'type-rootkit',
+    tagline:'Modifies the operating system itself to hide all evidence of infection. The hardest malware to detect and remove.',
+    desc:'Rootkits operate at the OS kernel level, hiding all traces of themselves and other malware. They subvert the OS so that infected systems appear clean even when heavily compromised.',
+    stats:{ spread:'DROPPER/EXPLOIT', stealth:'EXTREME', damage:'SEVERE' },
+    tags:['Kernel-Level','Self-Hiding','OS Subversion','Persistence Expert'],
+    howItWorks:[
+      {title:'Privilege Escalation', desc:'Rootkit gains administrator/root access — typically through exploit or credential theft.'},
+      {title:'Kernel Injection', desc:'Injects code into the operating system kernel — the most trusted level of the OS.'},
+      {title:'Hook Subversion', desc:'Intercepts OS API calls. When you ask "what files exist?" the rootkit removes itself from the answer.'},
+      {title:'Tool Invisibility', desc:'Makes itself and other malware invisible to: file system, task manager, network monitors, and antivirus.'},
+      {title:'Persistence', desc:'Survives reboots by infecting the bootloader (bootkits) or firmware. Removal requires full OS reinstall.'},
+    ],
+    indicators:[
+      'Antivirus cannot update or fails to run',
+      'System resources used but nothing visible in task manager',
+      'Bootloader or BIOS behaves unexpectedly',
+      'Security tools crash when launched',
+      'Network activity detected by router but not the OS',
+      'System clock runs incorrectly',
+    ],
+    examples:[
+      {name:'Sony BMG Rootkit',year:'2005',desc:'DRM software installed a rootkit on millions of PCs; hid itself from Windows',impact:'10M+ CDs, class action'},
+      {name:'Necurs',year:'2012',desc:'Kernel rootkit protecting a massive botnet from removal',impact:'6M+ bots protected'},
+      {name:'TDSS (TDL-4)',year:'2010',desc:'Bootkit infecting MBR; survived OS reinstalls',impact:'4.5M+ infections'},
+      {name:'LoJax',year:'2018',desc:'First UEFI rootkit deployed in the wild by APT28 (Fancy Bear)',impact:'Government targets'},
+    ],
+    defenses:[
+      {icon:'🔐',text:'UEFI Secure Boot to prevent bootloader infection'},
+      {icon:'📊',text:'Behavior-based detection rather than signature scanning'},
+      {icon:'🔍',text:'Memory forensics tools (GMER, Volatility Framework)'},
+      {icon:'🚀',text:'Boot from clean external media for scanning'},
+      {icon:'💿',text:'OS reinstall from clean media is often the only solution'},
+      {icon:'🛡️',text:'Hypervisor-based security to inspect OS from below'},
+    ],
+    simBehavior:'Shows infected nodes as appearing clean (blue border) while actually compromised. Demonstrates the stealth challenge — detection tools show false "clean" readings. One of the hardest to detect in simulation.'
+  },
+  {
+    id:'botnet', name:'Botnet', icon:'🤖', type:'Command & Control', threat:9, css:'type-botnet',
+    tagline:'A network of compromised computers ("bots") remotely controlled by an attacker to launch coordinated attacks.',
+    desc:'Botnets compromise thousands of computers and make them remotely controllable. The infected systems ("bots" or "zombies") carry out attacker instructions: DDoS attacks, spam campaigns, credential stuffing, and crypto mining.',
+    stats:{ spread:'MULTI-VECTOR', stealth:'HIGH', damage:'CATASTROPHIC' },
+    tags:['Command & Control','DDoS Platform','Zombie Network','Coordinated Attacks'],
+    howItWorks:[
+      {title:'Infection', desc:'Bot malware delivered via phishing, drive-by download, or worm. Any malware type can create bots.'},
+      {title:'C2 Registration', desc:'Infected machine contacts Command & Control (C2) server to register as a bot and await instructions.'},
+      {title:'Persistence', desc:'Bot installs persistence mechanisms to survive reboots without user knowledge.'},
+      {title:'Tasking', desc:'C2 server sends commands to bots: launch DDoS, send spam, download new malware, mine cryptocurrency.'},
+      {title:'Coordination', desc:'Thousands of bots operate simultaneously — enabling attacks impossible from a single source.'},
+    ],
+    indicators:[
+      'Unusual outbound traffic especially on port 80/443/6667 (IRC)',
+      'High CPU/GPU usage when computer appears idle (mining)',
+      'Emails sent from your account you did not write',
+      'Internet connection much slower than expected',
+      'Firewall logs showing connections to known C2 IPs',
+      'Computer active (fans spinning, disk activity) when not in use',
+    ],
+    examples:[
+      {name:'Mirai',year:'2016',desc:'IoT botnet; 600K+ devices launched 1.2 Tbps DDoS on Dyn DNS',impact:'Major internet outage'},
+      {name:'Emotet',year:'2014',desc:'Banking trojan evolved into botnet-as-a-service platform',impact:'Millions of infections'},
+      {name:'GameOver Zeus',year:'2011',desc:'Peer-to-peer botnet; stole $100M+ from banking customers',impact:'$100M+ stolen'},
+      {name:'Conficker',year:'2008',desc:'9M+ device botnet; coordinated attacks on government systems',impact:'Worldwide disruption'},
+    ],
+    defenses:[
+      {icon:'🌐',text:'DNS sinkholes to redirect C2 traffic'},
+      {icon:'📊',text:'Network flow analysis to detect C2 communications'},
+      {icon:'🔥',text:'Firewall rules blocking known botnet C2 IP ranges'},
+      {icon:'🛡️',text:'Endpoint protection with behavioral detection'},
+      {icon:'📧',text:'Email security to block initial delivery mechanism'},
+      {icon:'🔄',text:'Patch management — IoT devices especially critical'},
+    ],
+    simBehavior:'Rapid infection. All infected nodes immediately establish C2 connections (purple beacons) and await attack commands. Multiple infected nodes then launch a coordinated simulated attack.'
+  }
+];
+
+// ── Identification Challenges ──
+const ID_CHALLENGES = [
+  {
+    malware:'virus', title:'INCIDENT_LOG_2024_0142.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat incident_report.txt
+
+INCIDENT DATE: Tuesday, 14:32:07
+AFFECTED HOST: WORKSTATION-07 (Marketing Dept)
+
+[OBSERVATION LOG]
+<span class="t-yellow">14:22 - User reported Excel file "Q3_Forecast.xlsx" acting strangely</span>
+14:23 - Scan reveals file size 340KB → now 847KB
+14:25 - Same anomaly detected in "Budget_2024.xlsx" and "Report_Final.xlsx"
+<span class="t-red">14:28 - ALERT: 7 additional .exe files flagged with modified timestamps</span>
+14:30 - All modified files share identical 512-byte code injection
+14:31 - Code executes ONLY when infected file is opened by user
+14:34 - No network propagation detected — spread requires user file sharing
+
+[FILE ANALYSIS]
+Original hash: d41d8cd98f00b204e9800998ecf8427e
+Current hash:  <span class="t-red">b026324c6904b2a9cb4b88d6d61c81d1</span> [MISMATCH]
+
+[SPREAD VECTOR]
+Shared network drive X:\ — users opening infected files
+No autonomous spread detected
+Requires: User must execute/open infected document
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'Based on the file size anomaly, code injection pattern, and spread requiring user execution — what malware type is this?',
+    correct:0, choices:['Computer Virus','Network Worm','Trojan Horse','Rootkit'],
+    feedback:'Correct. The key indicators are: (1) self-replication by injecting code into other files, (2) file size increases on executable and document files, (3) spread REQUIRES user action (opening files). Worms spread autonomously — this requires a user to open the infected file.'
+  },
+  {
+    malware:'worm', title:'NETWORK_ALERT_2024_0891.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat network_anomaly_report.txt
+
+TIMESTAMP: 03:17:44 UTC
+ALERT SEVERITY: <span class="t-red">CRITICAL</span>
+
+[NETWORK MONITORING SYSTEM - ALERT]
+<span class="t-red">Outbound port scan detected: 192.168.1.47 → scanning /24 range</span>
+Packets/sec: 12,400 (BASELINE: ~120)
+Protocol: SMB port 445 probe packets
+
+[AFFECTED SYSTEMS - AUTO-DETECTED]
+03:18:12 - 192.168.1.47 [PATIENT ZERO]
+<span class="t-red">03:18:45 - 192.168.1.12 NEWLY INFECTED (no user logged in)</span>
+<span class="t-red">03:19:03 - 192.168.1.28 NEWLY INFECTED (no user logged in)</span>
+<span class="t-red">03:19:31 - 192.168.1.44 NEWLY INFECTED (system was in sleep mode)</span>
+<span class="t-red">03:21:07 - 14 machines compromised — exponential growth</span>
+
+[EXPLOIT CHAIN IDENTIFIED]
+CVE-2017-0144 (EternalBlue) — SMB exploit
+Vulnerability: Windows SMBv1 unpatched
+NO USER INTERACTION OBSERVED on any secondary infection
+
+<span class="t-yellow">Note: Systems infected while completely unmanned (3AM)</span>
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'The infection spread to systems with NO users logged in, at 3AM, using a network exploit. What is this malware?',
+    correct:1, choices:['Computer Virus','Network Worm','Trojan Horse','Botnet'],
+    feedback:'Correct. Network Worms are defined by autonomous propagation requiring NO user interaction. Critical indicators: (1) spread to systems with no user logged in, (2) exponential infection rate, (3) exploitation of a network vulnerability (EternalBlue/SMBv1). A virus would require someone to open a file.'
+  },
+  {
+    malware:'trojan', title:'MALWARE_SAMPLE_T-447.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat sample_analysis.txt
+
+SAMPLE: "FreeVideoConverter_v3.2_setup.exe"
+DOWNLOAD SOURCE: <span class="t-yellow">freeware-downloads247.net</span> [SUSPICIOUS]
+
+[STATIC ANALYSIS]
+File presents as: Video conversion utility
+Actual embedded payloads: 3 detected
+
+[BEHAVIOR ANALYSIS - SANDBOX EXECUTION]
+→ UI launches, appears fully functional ✓
+<span class="t-red">→ BACKGROUND: Creates registry key HKLM\...\Run\svchost32</span>
+<span class="t-red">→ BACKGROUND: Opens backdoor on port 4444</span>
+<span class="t-red">→ BACKGROUND: Connects to 185.220.x.x:8080 (C2 server)</span>
+<span class="t-red">→ BACKGROUND: Keylogger initialized</span>
+
+[REPLICATION CHECK]
+Self-replication to other files: <span class="t-yellow">NEGATIVE</span>
+Network propagation attempt: <span class="t-yellow">NEGATIVE</span>
+Requires user to download and execute: YES
+
+[CONCLUSION] Malware disguised as legitimate utility.
+Does not replicate. Backdoor established on execution.
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'The malware disguises itself as useful software, installs silently, creates a backdoor, but does NOT self-replicate. What type is this?',
+    correct:2, choices:['Computer Virus','Network Worm','Trojan Horse','Spyware'],
+    feedback:'Correct. Trojans disguise themselves as legitimate software to deceive users into installing them. Defining characteristics: (1) appears to function normally as advertised, (2) secretly installs backdoor and keylogger, (3) NO self-replication, (4) requires user to voluntarily download and run it.'
+  },
+  {
+    malware:'ransom', title:'INCIDENT_RESPONSE_IR-2891.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat ir_ticket_2891.txt
+
+REPORT TIME: 02:47 AM (call from night security)
+PRIORITY: <span class="t-red">P1 — ALL HANDS</span>
+
+[INCIDENT DESCRIPTION]
+ALL FILES on FILESERVER-01 have extension: <span class="t-red">.LOCKED_PATHOGEN</span>
+Employees arriving at 7AM cannot open ANY documents
+Desktop wallpaper changed to: <span class="t-red">[RANSOM DEMAND IMAGE]</span>
+README_DECRYPT.txt found in every folder
+
+[README_DECRYPT.txt CONTENTS]
+"Your files have been encrypted using AES-256.
+ To recover your files, send 45 Bitcoin to:
+ bc1qxy2kgdygjrsqtzq2n0yrf1234abc
+ Contact: support@darknet-support.onion
+ YOU HAVE 72 HOURS BEFORE KEY IS DELETED"
+
+[TECHNICAL ANALYSIS]
+<span class="t-red">Backup systems: DELETED (VSS shadow copies wiped)</span>
+<span class="t-red">Encryption started: 02:00 AM — 14,000 files encrypted by 02:44 AM</span>
+File headers: AES-256 encryption confirmed
+Network exfiltration: 47GB sent to external server (double extortion)
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'Files encrypted, ransom demanded in Bitcoin, backups deleted, data exfiltrated for double extortion. What malware type?',
+    correct:3, choices:['Trojan Horse','Computer Virus','Botnet','Ransomware'],
+    feedback:'Correct. Textbook Ransomware — specifically modern double-extortion ransomware. Key indicators: (1) mass file encryption with custom extension, (2) ransom demand for cryptocurrency, (3) shadow copy/backup deletion, (4) data exfiltration before encryption. The 72-hour countdown is classic ransomware pressure.'
+  },
+  {
+    malware:'spy', title:'FORENSIC_REPORT_F-0034.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat forensic_report_F0034.txt
+
+SUBJECT: Executive Laptop — CEO Sarah Mitchell
+REASON: Suspected credential theft after bank account accessed
+
+[MEMORY FORENSICS - FINDINGS]
+<span class="t-red">Process: svch0st.exe (zero not letter O) — SUSPICIOUS</span>
+Memory region: Hooks into Windows keyboard API (WH_KEYBOARD_LL)
+<span class="t-red">Evidence: EVERY keystroke logged to encrypted buffer</span>
+<span class="t-red">Screenshot capture: Every 47 seconds to C:\Windows\Temp\~tmp</span>
+Clipboard contents: Logged on every CTRL+C event
+
+[NETWORK FORENSICS]
+Outbound connection: vpn-secure-update[.]com [MALICIOUS]
+Data exfiltrated: ~140MB over 3 months (very slow, covert)
+Traffic: Encrypted HTTPS — blends with legitimate traffic
+<span class="t-yellow">Packet timing: Exfiltrates only between 2-4AM to avoid detection</span>
+
+[SYSTEM ARTIFACTS]
+Task Manager: Process INVISIBLE to normal user view
+Antivirus logs: No detections (evasion successful)
+Duration on system: <span class="t-red">3 MONTHS UNDETECTED</span>
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'Keystroke logging, screenshot capture, hidden process, covert exfiltration — 3 months undetected. What is this?',
+    correct:1, choices:['Rootkit','Spyware','Trojan Horse','Adware'],
+    feedback:'Correct. Spyware is specifically designed for covert surveillance. Defining characteristics: (1) keyboard API hooking for every keystroke, (2) periodic screenshot capture, (3) clipboard monitoring, (4) slow covert exfiltration, (5) hidden from normal visibility. The 3-month undetected operation is a hallmark of professional spyware.'
+  },
+  {
+    malware:'rootkit', title:'ANOMALY_REPORT_SYS-7741.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat anomaly_report_7741.txt
+
+TRIGGERED BY: Network team noticed outbound traffic
+but IT says "machine appears clean"
+
+[ANOMALY LOG]
+<span class="t-red">ROUTER: 2.3 Mbps sustained outbound from SERVER-DB-03</span>
+<span class="t-yellow">WINDOWS TASK MANAGER: Shows 2% CPU, minimal network activity</span>
+<span class="t-red">DISCREPANCY: Router and OS report completely different usage</span>
+
+[INVESTIGATION STEPS TAKEN]
+✗ Antivirus scan: CLEAN (no threats detected)
+✗ Process list: All processes appear legitimate
+✗ Network connections (netstat): No suspicious connections
+<span class="t-red">✓ Live RAM capture (external tool): 3 HIDDEN PROCESSES FOUND</span>
+<span class="t-red">✓ Off-system scan (bootable USB): MALICIOUS DRIVER IN KERNEL</span>
+
+[TECHNICAL DETAIL]
+Malware intercepts OS API calls:
+- NtQuerySystemInformation (hides processes)
+- NtQueryDirectoryFile (hides files)
+- NetConnectionEnum (hides network connections)
+OS "lies" about its own state — kernel is compromised.
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'The OS reports everything clean but the router shows heavy traffic. OS API hooks hide processes from all standard tools. What is this?',
+    correct:0, choices:['Rootkit','Spyware','Botnet','Worm'],
+    feedback:'Correct. A Rootkit modifies the OS itself to hide evidence of compromise. The defining characteristic is the DISCREPANCY between what the OS reports and what external observation reveals. By hooking OS API calls, the rootkit makes the OS lie about its own state. Detection required going OUTSIDE the OS.'
+  },
+  {
+    malware:'botnet', title:'THREAT_INTEL_REPORT_TI-422.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat threat_intel_TI422.txt
+
+SOURCE: ISP abuse complaint + internal network logs
+
+[COMPLAINT FROM ISP]
+Our IP range is generating <span class="t-red">430,000 SPAM EMAILS/HOUR</span>
+Multiple IP addresses in your /24 range
+Destination: 60+ countries
+
+[INTERNAL INVESTIGATION]
+Affected machines: <span class="t-red">47 workstations confirmed</span>
+User awareness: NONE — all machines appear normal to users
+All 47 machines connect periodically to:
+<span class="t-red">IRC server: irc.controlpanel[.]cc:6667</span>
+Command channel: #work_bots
+
+[CAPTURED IRC COMMANDS]
+12:04:17 "!spam start list_24_million.txt rate:10000"
+<span class="t-red">12:04:18 → All 47 machines began spam campaign simultaneously</span>
+13:30:00 "!ddos target:competitor-site.com port:80 duration:3600"
+<span class="t-red">13:30:01 → All 47 machines began flooding target</span>
+
+[MACHINE STATUS]
+Individual machines: appear normal to users
+Collective capability: ~2Gbps DDoS, 430K spam/hr
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'47 machines receive coordinated commands via IRC, silently launching spam and DDoS attacks without user knowledge. What is this?',
+    correct:2, choices:['Spyware','Ransomware','Botnet','Trojan Horse'],
+    feedback:'Correct. A Botnet is a network of compromised computers under centralized remote control. Key indicators: (1) multiple machines receiving commands from a C2 server (IRC), (2) coordinated simultaneous action, (3) users completely unaware, (4) capability for DDoS and spam at scale impossible from a single machine.'
+  },
+  {
+    malware:'adware', title:'USER_COMPLAINT_TICKET_4821.txt',
+    terminal:`<span class="t-prompt">analyst@forensic-lab:~$</span> cat helpdesk_ticket_4821.txt
+
+USER: Michael Chen, Sales Representative
+COMPLAINT: "My computer is messed up since I installed
+            that free PDF reader last week"
+
+[SYMPTOMS REPORTED]
+• Browser homepage: Changed to "BestSearchNow.com"
+• Search engine: Changed to unknown provider
+• <span class="t-yellow">3 new toolbars installed in browser</span>
+• Pop-up ads appearing every 5-10 minutes
+• Webpages load slower; ads injected into pages
+• <span class="t-yellow">Redirected to "DiscountDeals247.com" while browsing</span>
+
+[TECHNICAL ANALYSIS]
+Browser extensions added (unbeknownst to user):
+<span class="t-yellow">- "ShopSave Pro" (tracks shopping behavior)</span>
+<span class="t-yellow">- "DealsAlert" (injects ads into all websites)</span>
+<span class="t-yellow">- "SearchEnhancer" (redirects searches)</span>
+
+Network traffic: Behavioral data sent to analytics.adnetwork[.]io
+File damage: NONE
+System damage: NONE
+Data exfiltrated: Browsing history, shopping habits
+
+[SEVERITY ASSESSMENT]
+No file encryption, no critical data theft
+Primarily: <span class="t-yellow">ANNOYING + PRIVACY VIOLATING</span>
+Risk: Could serve malicious ads as a secondary vector
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`,
+    question:'Browser hijacking, toolbars, pop-ups, and ad injection after installing a free PDF reader. No file damage. What type of malware?',
+    correct:3, choices:['Trojan Horse','Spyware','Rootkit','Adware'],
+    feedback:'Correct. Adware is characterized by: (1) browser hijacking (homepage, search engine changes), (2) unauthorized toolbars and extensions, (3) constant pop-up advertisements, (4) browsing data collection for ad targeting, (5) NO file system damage. It monetizes through advertising rather than direct theft, often arriving bundled with free software.'
+  }
+];
+
+// ── Defense Matching ──
+const MATCH_DATA = [
+  {threat:'Computer Virus',  defense:'Application Whitelisting & File Integrity Monitoring'},
+  {threat:'Network Worm',    defense:'Patch Management & Network Segmentation'},
+  {threat:'Trojan Horse',    defense:'Security Awareness Training & Download Controls'},
+  {threat:'Ransomware',      defense:'Immutable Backups (3-2-1 Rule) & Email Sandboxing'},
+  {threat:'Spyware',         defense:'Behavioral EDR & Anti-Keylogger Tools'},
+  {threat:'Adware',          defense:'PUA Detection & Browser Extension Auditing'},
+  {threat:'Rootkit',         defense:'Secure Boot (UEFI) & Bootable Offline Scanning'},
+  {threat:'Botnet',          defense:'DNS Sinkholes & C2 Traffic Analysis'},
+];
+
+// ── Quiz ──
+const QUIZ = [
+  {
+    q:'What is the key difference between a virus and a worm?',
+    opts:['A virus is more dangerous than a worm','A worm requires user interaction to spread; a virus does not','A virus requires user interaction to spread; a worm self-propagates autonomously','Worms only affect mobile devices'],
+    correct:2, explain:'A virus requires a user to execute or open an infected file to spread. A worm is self-propagating — it exploits network vulnerabilities to spread automatically with zero user interaction. This is why worms can infect entire networks overnight while everyone is asleep.'
+  },
+  {
+    q:'A user downloads "FreeGameHack.exe" which installs a game trainer as advertised — but also secretly installs a backdoor. What malware type is this?',
+    opts:['Computer Virus','Network Worm','Trojan Horse','Rootkit'],
+    correct:2, explain:'This is a Trojan Horse — it disguises itself as desirable software, relies on user deception to install, and performs hidden malicious actions while appearing legitimate. Trojans do not self-replicate — they need users to choose to install them.'
+  },
+  {
+    q:'Which malware type is specifically designed to HIDE all evidence of infection by modifying the operating system kernel?',
+    opts:['Spyware','Ransomware','Rootkit','Adware'],
+    correct:2, explain:'Rootkits operate at the OS kernel level and modify how the operating system reports information. They intercept API calls so that infected systems appear clean even when deeply compromised. The key indicator is a discrepancy between OS-reported state and external observation.'
+  },
+  {
+    q:'What is "double extortion" in the context of modern ransomware attacks?',
+    opts:['Demanding two separate ransom payments','Attacking two companies simultaneously','Encrypting files AND exfiltrating data to threaten publication if ransom is unpaid','Installing two types of ransomware on the same system'],
+    correct:2, explain:'Modern ransomware groups use double extortion: they first steal (exfiltrate) sensitive data, then encrypt all files. Even if a victim restores from backups, they still face the threat of their confidential data being published — giving attackers two leverage points instead of one.'
+  },
+  {
+    q:'An analyst notices a system is generating huge amounts of network traffic but the Windows Task Manager shows minimal activity. This discrepancy MOST likely indicates:',
+    opts:['A misconfigured network adapter','A Rootkit hiding its network activity from the OS','Normal Windows Update traffic','A misconfigured firewall'],
+    correct:1, explain:"A Rootkit intercepts OS API calls and hides its activity — network connections, processes, and files become invisible to standard tools. When there's a significant discrepancy between what the OS reports and what network devices observe, a rootkit is the primary suspect."
+  },
+  {
+    q:'Which malware type creates a network of compromised computers to carry out coordinated attacks like DDoS, spam campaigns, or cryptocurrency mining?',
+    opts:['Ransomware','Network Worm','Botnet','Rootkit'],
+    correct:2, explain:'A Botnet is a network of malware-infected computers ("bots" or "zombies") under centralized command-and-control. The attacker sends commands to all bots simultaneously — enabling attacks at a scale impossible from a single machine.'
+  },
+  {
+    q:'The MOST effective defense against ransomware is:',
+    opts:['Having a strong antivirus subscription','Paying the ransom quickly to minimize downtime','Maintaining immutable, air-gapped backups following the 3-2-1 rule','Enabling Windows Defender firewall'],
+    correct:2, explain:'The 3-2-1 backup rule (3 copies, 2 different media types, 1 offsite) with immutable/air-gapped backups is the most effective ransomware defense. If you can restore from backup, the ransom demand loses its power. Ransomware specifically targets and deletes online backups.'
+  },
+  {
+    q:'Spyware most commonly reaches a victim\'s system through which method?',
+    opts:['Exploiting network vulnerabilities autonomously','Being bundled with "free" software or delivered via phishing','Self-replicating from infected USB drives','Being purchased through official app stores'],
+    correct:1, explain:'Spyware commonly arrives bundled with free software or through phishing links. Always read installation dialogs carefully and use anti-spyware tools when installing free software.'
+  },
+  {
+    q:'What makes adware different from spyware, even though both collect user data?',
+    opts:["Adware is illegal in all countries; spyware is not","Adware's primary purpose is advertising revenue and browser manipulation, not credential theft or covert surveillance","Adware can self-replicate; spyware cannot","Spyware is more visible to the user than adware"],
+    correct:1, explain:"Adware's primary goal is advertising revenue — browser hijacking, ad injection, and behavioral tracking for ad targeting. Spyware is more covert — capturing keystrokes, credentials, screenshots for theft or espionage. Adware is generally less dangerous but can be a vector for more serious threats."
+  },
+  {
+    q:'A network worm exploiting an unpatched vulnerability is detected at 11 PM. What is the MOST URGENT first action?',
+    opts:['Email all staff about the incident immediately','Isolate (quarantine) infected network segments and block the exploit port/service to prevent further spread','Schedule an investigation for the next business day','Format all infected machines immediately'],
+    correct:1, explain:'Network isolation is the most critical first action for a worm incident. Worms spread exponentially — every minute of delay means more infected hosts. Segment and quarantine to contain the spread, then block the exploited service.'
+  },
+  {
+    q:'Which type of malware specifically targets the MBR (Master Boot Record) or UEFI firmware to survive operating system reinstalls?',
+    opts:['Advanced Ransomware','Bootkit (a type of Rootkit)','Network Worm','Polymorphic Virus'],
+    correct:1, explain:'Bootkits are a sophisticated form of rootkit that infect the MBR or UEFI firmware — executing BEFORE the operating system loads. This means simply reinstalling Windows does not remove them. UEFI Secure Boot and firmware-level scanning are required.'
+  },
+  {
+    q:'An employee receives an email "from IT" saying their password expired and clicks a link to a realistic-looking login page, entering their credentials. What attack type delivered the initial malware payload?',
+    opts:['Network Worm exploitation','Phishing attack (social engineering) — the delivery vector for most Trojans and Ransomware','Drive-by download via adware','Rootkit privilege escalation'],
+    correct:1, explain:'This is a phishing attack — social engineering via email that tricks users into revealing credentials or clicking malicious links. Phishing is the #1 initial access vector for ransomware, trojans, and many other malware types.'
+  }
+];
+
+// ══════════════════════════════════════════════════════════
+// NAVIGATION
+// ══════════════════════════════════════════════════════════
+function showView(id) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('view-' + id).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => {
+    if (b.getAttribute('onclick')?.includes("'" + id + "'")) b.classList.add('active');
+  });
+  if (id === 'identify') initIdChallenge();
+  if (id === 'defense')  initMatch();
+  if (id === 'quiz')     initQuiz();
+}
+
+// ══════════════════════════════════════════════════════════
+// SPECIMEN LAB
+// ══════════════════════════════════════════════════════════
+function renderSpecimens() {
+  const grid = document.getElementById('specimen-grid');
+  MALWARE.forEach(m => {
+    const c = MALWARE_COLORS[m.id];
+    const card = document.createElement('div');
+    card.className = `specimen-card ${m.css}`;
+    // Apply inline glow colors since CSS var(--c) doesn't work for dynamic color-mix
+    card.innerHTML = `
+      <div class="sc-header">
+        <div class="sc-icon" style="background:${hexRgba(c,0.1)};border-color:${hexRgba(c,0.3)}">${m.icon}</div>
+        <div class="sc-meta">
+          <div class="sc-name" style="color:${c};text-shadow:0 0 12px ${hexRgba(c,0.4)}">${m.name}</div>
+          <span class="sc-type" style="color:${c};border-color:${hexRgba(c,0.3)};background:${hexRgba(c,0.08)}">${m.type}</span>
+        </div>
+        <div class="sc-threat">
+          <div class="threat-level" style="color:${c}">${m.threat}</div>
+          <div class="threat-label">THREAT LEVEL</div>
+        </div>
+      </div>
+      <div class="sc-desc">${m.desc}</div>
+      <div class="sc-stats">
+        <div class="sc-stat"><div class="sc-stat-val" style="color:${c};font-size:10px">${m.stats.spread}</div><div class="sc-stat-lbl">SPREAD</div></div>
+        <div class="sc-stat"><div class="sc-stat-val" style="color:${c};font-size:10px">${m.stats.stealth}</div><div class="sc-stat-lbl">STEALTH</div></div>
+        <div class="sc-stat"><div class="sc-stat-val" style="color:${c};font-size:10px">${m.stats.damage}</div><div class="sc-stat-lbl">DAMAGE</div></div>
+      </div>
+      <div class="sc-footer">
+        <span style="color:var(--dim);font-size:10px;">${m.examples.length} real-world examples</span>
+        <button class="sc-btn" style="color:${c};border-color:${hexRgba(c,0.4)}" onmouseover="this.style.background='${hexRgba(c,0.12)}'" onmouseout="this.style.background='none'" onclick="openDissect('${m.id}')">DISSECT →</button>
+      </div>`;
+    // hover border
+    card.addEventListener('mouseenter', () => { card.style.borderColor = hexRgba(c, 0.5); card.style.boxShadow = `0 8px 32px ${hexRgba(c,0.12)}`; });
+    card.addEventListener('mouseleave', () => { card.style.borderColor = ''; card.style.boxShadow = ''; });
+    grid.appendChild(card);
+  });
+}
+
+// ══════════════════════════════════════════════════════════
+// DISSECTION LAB — FIXED: all colors are resolved hex values
+// ══════════════════════════════════════════════════════════
+function openDissect(id) {
+  const m = MALWARE.find(x => x.id === id);
+  const c = MALWARE_COLORS[id]; // actual hex — no CSS vars in JS strings
+
+  const lifecycleHtml = m.howItWorks.map((s, i) => `
+    <div class="lc-step" style="border-left-color:${c}">
+      <div class="lc-num" style="color:${c}">${String(i+1).padStart(2,'0')}</div>
+      <div class="lc-content">
+        <div class="lc-title">${s.title}</div>
+        <div class="lc-desc">${s.desc}</div>
+      </div>
+    </div>`).join('');
+
+  const indicatorsHtml = m.indicators.map(ind => `
+    <div class="d-list-item">
+      <div class="d-list-dot" style="background:${c}"></div>
+      <span>${ind}</span>
+    </div>`).join('');
+
+  const examplesHtml = `
+    <div class="real-world-examples">
+      <div class="rwe-row rwe-hdr"><span>NAME</span><span>DESCRIPTION</span><span>YEAR</span><span>IMPACT</span></div>
+      ${m.examples.map(ex => `
+        <div class="rwe-row">
+          <div class="rwe-name">${ex.name}</div>
+          <div class="rwe-desc">${ex.desc}</div>
+          <div class="rwe-year">${ex.year}</div>
+          <div class="rwe-impact" style="color:${c};font-family:'Share Tech Mono',monospace;font-size:10px">${ex.impact}</div>
+        </div>`).join('')}
+    </div>`;
+
+  const defensesHtml = `
+    <div class="defenses-grid">
+      ${m.defenses.map(d => `
+        <div class="defense-chip">
+          <div class="defense-icon">${d.icon}</div>
+          <div>${d.text}</div>
+        </div>`).join('')}
+    </div>`;
+
+  document.getElementById('dissect-body').innerHTML = `
+    <div class="dissect-hero">
+      <div class="dissect-icon-large" style="background:${hexRgba(c,0.12)};border-color:${hexRgba(c,0.5)};color:${c}">${m.icon}</div>
+      <div>
+        <div class="dissect-name" style="color:${c};text-shadow:0 0 30px ${hexRgba(c,0.4)}">${m.name}</div>
+        <div class="dissect-tagline">${m.tagline}</div>
+        <div class="dissect-tags">${m.tags.map(t => `<span class="d-tag">${t}</span>`).join('')}</div>
+      </div>
+    </div>
+
+    <div class="dissect-grid mb20">
+      <div class="d-card">
+        <div class="d-card-hdr">// INFECTION LIFECYCLE</div>
+        <div class="d-card-body"><div class="lifecycle-steps">${lifecycleHtml}</div></div>
+      </div>
+      <div class="d-card">
+        <div class="d-card-hdr">// SYMPTOMS &amp; INDICATORS</div>
+        <div class="d-card-body"><div class="d-list">${indicatorsHtml}</div></div>
+      </div>
+    </div>
+
+    <div class="dissect-section-hdr">REAL-WORLD CASE STUDIES</div>
+    ${examplesHtml}
+
+    <div class="dissect-section-hdr">DEFENSIVE COUNTERMEASURES</div>
+    ${defensesHtml}
+
+    <div style="margin-top:24px;padding:14px 16px;background:var(--panel);border:1px solid var(--border2);border-radius:4px;border-left:3px solid ${c};">
+      <div style="font-family:'Share Tech Mono',monospace;font-size:9px;color:${c};letter-spacing:3px;margin-bottom:6px;">// SIMULATION BEHAVIOR</div>
+      <div style="font-size:12px;color:var(--mid);line-height:1.65;">${m.simBehavior}</div>
+    </div>
+
+    <div style="margin-top:20px;display:flex;gap:10px;flex-wrap:wrap;">
+      <button class="g-btn g-btn-primary"
+        onclick="closeDissect();showView('simulator');document.getElementById('sim-malware-select').value='${m.id}'">
+        ▶ Simulate This Malware
+      </button>
+      <button class="g-btn g-btn-outline" onclick="closeDissect()">✕ Close</button>
+    </div>`;
+
+  const overlay = document.getElementById('dissect-overlay');
+  overlay.style.display = 'block';
+  overlay.scrollTop = 0;
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDissect() {
+  document.getElementById('dissect-overlay').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+// ══════════════════════════════════════════════════════════
+// INFECTION SIMULATOR
+// ══════════════════════════════════════════════════════════
+const canvas = document.getElementById('networkCanvas');
+const ctx = canvas.getContext('2d');
+let nodes = [], edges = [], simInterval = null, simRunning = false;
+
+const SIM_BEHAVIORS = {
+  virus:   {note:'Spreads only when "user opens a file" on connected nodes. Slower, targeted propagation. Avoids unshared paths.',       spreadRate:0.25, autoQuarantine:0.1},
+  worm:    {note:'Autonomous scanning and exploitation. Infects ALL reachable nodes rapidly with no user interaction required.',          spreadRate:0.85, autoQuarantine:0.15},
+  trojan:  {note:'Installed on random nodes (simulating user deception). Does NOT spread — establishes C2 beacon back to attacker.',     spreadRate:0.0,  autoQuarantine:0.05},
+  ransom:  {note:'Spreads quietly first (lateral movement), then triggers simultaneous encryption of all infected nodes at once.',        spreadRate:0.5,  autoQuarantine:0.2},
+  spy:     {note:'Infects silently. Nodes appear CLEAN but beacon to C2. Very slow exfiltration — designed to be undetected for months.',spreadRate:0.2,  autoQuarantine:0.03},
+  adware:  {note:'Rapid but low-severity spread via software bundles. Infected nodes still function normally — just with ads.',           spreadRate:0.6,  autoQuarantine:0.25},
+  rootkit: {note:'Appears to infect FEWER nodes than it actually has. Infected nodes show as clean (rootkit hiding). Real count higher.', spreadRate:0.3,  autoQuarantine:0.05},
+  botnet:  {note:'Rapid infection. All infected nodes immediately establish C2 connections (purple beacons) and await attack commands.',   spreadRate:0.7,  autoQuarantine:0.1},
+};
+
+function initNetwork() {
+  const W = canvas.clientWidth || 600;
+  const H = 420;
+  canvas.width = W; canvas.height = H;
+  nodes = []; edges = [];
+  for (let i = 0; i < 20; i++) {
+    const angle  = (i / 20) * Math.PI * 2;
+    const r      = i < 10 ? 130 : 210;
+    const jitter = (Math.random() - 0.5) * 60;
+    nodes.push({ id:i, x:W/2 + Math.cos(angle)*( r+jitter), y:H/2 + Math.sin(angle)*(r+jitter*0.6), state:'clean', radius:14, label:`N${String(i+1).padStart(2,'0')}` });
+  }
+  for (let i = 0; i < nodes.length; i++) {
+    const numEdges = 2 + Math.floor(Math.random() * 3);
+    const sorted = [...nodes].sort((a,b) => Math.hypot(a.x-nodes[i].x,a.y-nodes[i].y) - Math.hypot(b.x-nodes[i].x,b.y-nodes[i].y));
+    for (let j = 1; j <= numEdges && j < sorted.length; j++) {
+      const t = sorted[j].id;
+      if (!edges.find(e => (e.a===i&&e.b===t)||(e.a===t&&e.b===i))) edges.push({a:i,b:t,active:false,progress:0});
+    }
+  }
+  updateSimStats(); drawNetwork();
+}
+
+function nodeColor(state, malId) {
+  if (state === 'clean')        return '#4daa62';
+  if (state === 'patient-zero') return '#ff6d00';
+  if (state === 'quarantined')  return '#2979ff';
+  if (state === 'spreading')    return '#ffd600';
+  if (state === 'c2')           return '#d500f9';
+  if (state === 'infected') {
+    if (malId === 'rootkit') return '#2979ff'; // appears clean/blue — stealth illusion
+    return '#ff1744';
+  }
+  return '#4daa62';
+}
+
+function drawNetwork() {
+  const malId = document.getElementById('sim-malware-select').value;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  edges.forEach(e => {
+    const a = nodes[e.a], b = nodes[e.b];
+    ctx.beginPath();
+    ctx.strokeStyle = e.active ? 'rgba(255,23,68,0.4)' : 'rgba(20,64,36,0.5)';
+    ctx.lineWidth = e.active ? 2 : 1;
+    ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+    if (e.active && e.progress > 0 && e.progress < 1) {
+      const from = nodes[e.a], to = nodes[e.b];
+      const px = from.x + (to.x - from.x) * e.progress;
+      const py = from.y + (to.y - from.y) * e.progress;
+      ctx.beginPath(); ctx.arc(px,py,4,0,Math.PI*2);
+      ctx.fillStyle='#ff1744'; ctx.shadowColor='#ff1744'; ctx.shadowBlur=10; ctx.fill(); ctx.shadowBlur=0;
+    }
+  });
+  nodes.forEach(n => {
+    const color = nodeColor(n.state, malId);
+    ctx.beginPath(); ctx.arc(n.x,n.y,n.radius,0,Math.PI*2);
+    ctx.fillStyle = color + '22'; ctx.fill();
+    ctx.strokeStyle = color; ctx.lineWidth = 2;
+    ctx.shadowColor = color; ctx.shadowBlur = n.state !== 'clean' ? 16 : 6;
+    ctx.stroke(); ctx.shadowBlur = 0;
+    ctx.fillStyle = color; ctx.font = '8px "Share Tech Mono"';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(n.label, n.x, n.y);
+  });
+}
+
+function addLog(msg, cls='') {
+  const log = document.getElementById('sim-log');
+  const t = new Date().toTimeString().slice(0,8);
+  const entry = document.createElement('div');
+  entry.className = 'sim-log-entry';
+  entry.innerHTML = `<span class="log-time">[${t}]</span> <span class="${cls}">${msg}</span>`;
+  log.insertBefore(entry, log.firstChild);
+  while (log.children.length > 30) log.removeChild(log.lastChild);
+}
+
+function updateSimStats() {
+  const clean = nodes.filter(n => n.state === 'clean').length;
+  const inf   = nodes.filter(n => ['infected','patient-zero','spreading','c2'].includes(n.state)).length;
+  const quar  = nodes.filter(n => n.state === 'quarantined').length;
+  document.getElementById('stat-clean').textContent    = clean;
+  document.getElementById('stat-infected').textContent = inf;
+  document.getElementById('stat-quarantine').textContent = quar;
+}
+
+let elapsed = 0, elapsedInterval = null, ransomTriggered = false;
+
+function startSimulation() {
+  if (simRunning) return;
+  resetSimulation();
+  const malId = document.getElementById('sim-malware-select').value;
+  const beh   = SIM_BEHAVIORS[malId];
+  document.getElementById('sim-behavior-note').textContent = beh.note;
+  const speed    = Math.max(1, Math.min(5, parseInt(document.getElementById('sim-speed').value)||1));
+  const interval = Math.floor(800/speed);
+
+  const pz = nodes[Math.floor(Math.random()*nodes.length)];
+  pz.state = 'patient-zero';
+  addLog(`PATIENT ZERO identified: ${pz.label}`, 'log-crit');
+  addLog(`Malware type: ${malId.toUpperCase()} — simulation starting`, 'log-warn');
+  drawNetwork(); simRunning = true; ransomTriggered = false;
+
+  elapsed = 0;
+  elapsedInterval = setInterval(() => {
+    elapsed += 0.1;
+    document.getElementById('stat-time').textContent = elapsed.toFixed(1)+'s';
+  }, 100);
+
+  simInterval = setInterval(() => {
+    stepSimulation(malId, beh);
+    updateSimStats(); drawNetwork();
+    const clean = nodes.filter(n => n.state==='clean').length;
+    if (clean === 0 || nodes.every(n => n.state==='quarantined')) {
+      clearInterval(simInterval); clearInterval(elapsedInterval);
+      simRunning = false; addLog('Simulation complete.', 'log-ok');
+    }
+  }, interval);
+}
+
+function stepSimulation(malId, beh) {
+  const infected = nodes.filter(n => ['patient-zero','infected','spreading'].includes(n.state));
+  if (malId === 'trojan') {
+    if (Math.random() < 0.3) {
+      const clean = nodes.filter(n => n.state==='clean');
+      if (clean.length > 0) { const t = clean[Math.floor(Math.random()*clean.length)]; t.state='c2'; addLog(`${t.label} — user installed Trojan. C2 beacon established.`,'log-crit'); }
+    }
+    return;
+  }
+  if (malId === 'ransom' && !ransomTriggered && infected.length >= Math.floor(nodes.length*0.5)) {
+    ransomTriggered = true;
+    addLog('RANSOMWARE TRIGGER: Encryption phase activated on all infected nodes!','log-crit');
+    nodes.forEach(n => { if (['patient-zero','infected','spreading'].includes(n.state)) n.state='infected'; });
+    return;
+  }
+  if (malId === 'botnet') {
+    infected.forEach(n => { if (n.state!=='c2' && Math.random()<0.4) { n.state='c2'; addLog(`${n.label} — Bot registered with C2. Awaiting command.`,'log-warn'); } });
+  }
+  if (malId === 'spy') {
+    infected.forEach(n => {
+      if (Math.random()<0.15) {
+        const nbrs = getNeighbors(n.id).filter(nb=>nb.state==='clean');
+        if (nbrs.length) { const t=nbrs[Math.floor(Math.random()*nbrs.length)]; t.state='c2'; addLog(`${t.label} — spyware installed covertly. Exfil initiated.`,'log-warn'); }
+      }
+    });
+    return;
+  }
+  infected.forEach(n => {
+    if (Math.random() < beh.spreadRate) {
+      const nbrs = getNeighbors(n.id).filter(nb=>nb.state==='clean');
+      if (nbrs.length) {
+        const t = nbrs[Math.floor(Math.random()*nbrs.length)];
+        t.state = malId==='worm' ? 'spreading' : 'infected';
+        const edge = edges.find(e=>(e.a===n.id&&e.b===t.id)||(e.a===t.id&&e.b===n.id));
+        if (edge) { edge.active=true; edge.progress=0; setTimeout(()=>{edge.active=false;},600); }
+        addLog(`${n.label} → ${t.label} infected [${malId.toUpperCase()}]`,'log-crit');
+      }
+    }
+    if (n.state!=='quarantined' && Math.random()<(beh.autoQuarantine||0.1)) {
+      n.state='quarantined'; addLog(`${n.label} quarantined by endpoint security`,'log-ok');
+    }
+  });
+  nodes.filter(n=>n.state==='spreading').forEach(n=>{ if(Math.random()<0.5) n.state='infected'; });
+}
+
+function getNeighbors(id) {
+  return edges.filter(e=>e.a===id||e.b===id).map(e=>nodes[e.a===id?e.b:e.a]);
+}
+
+function resetSimulation() {
+  clearInterval(simInterval); clearInterval(elapsedInterval);
+  simRunning=false; ransomTriggered=false; elapsed=0;
+  document.getElementById('stat-time').textContent='0.0s';
+  document.getElementById('sim-log').innerHTML='<div style="color:var(--dim)">// Simulation log — run a simulation to begin...</div>';
+  document.getElementById('sim-behavior-note').textContent='Select a malware type and run the simulation to see behavioral notes.';
+  initNetwork();
+}
+
+// ══════════════════════════════════════════════════════════
+// IDENTIFICATION CHALLENGE
+// ══════════════════════════════════════════════════════════
+let idIdx=0, idScore=0, idAnswered=[], idSelected=-1;
+
+function initIdChallenge() { if (idAnswered.length===0) loadIdChallenge(); }
+
+function loadIdChallenge() {
+  if (idIdx >= ID_CHALLENGES.length) { showIdComplete(); return; }
+  const ch = ID_CHALLENGES[idIdx];
+  idSelected = -1;
+  document.getElementById('id-terminal-title').textContent = ch.title;
+  document.getElementById('id-terminal').innerHTML = ch.terminal;
+  document.getElementById('id-question-text').textContent = ch.question;
+  const choicesEl = document.getElementById('id-choices');
+  choicesEl.innerHTML = '';
+  const letters = ['A','B','C','D'];
+  ch.choices.forEach((c,i) => {
+    const div = document.createElement('div');
+    div.className = 'id-choice';
+    div.innerHTML = `<span class="id-choice-key">${letters[i]}</span>${c}`;
+    div.onclick = () => selectIdChoice(i);
+    choicesEl.appendChild(div);
+  });
+  document.getElementById('id-feedback').className = 'id-feedback';
+  document.getElementById('id-feedback').innerHTML = '';
+  document.getElementById('id-check-btn').disabled = true;
+  document.getElementById('id-check-btn').style.display = 'inline-block';
+  document.getElementById('id-next-btn').style.display = 'none';
+  updateIdProgress();
+}
+
+function selectIdChoice(idx) {
+  idSelected = idx;
+  document.querySelectorAll('.id-choice').forEach((c,i) => c.classList.toggle('selected', i===idx));
+  document.getElementById('id-check-btn').disabled = false;
+}
+
+function checkIdAnswer() {
+  const ch = ID_CHALLENGES[idIdx];
+  const correct = idSelected === ch.correct;
+  if (correct) idScore++;
+  idAnswered.push({correct, selected:idSelected});
+  document.querySelectorAll('.id-choice').forEach((c,i) => {
+    c.classList.add('disabled');
+    if (i===ch.correct) c.classList.add('correct');
+    else if (i===idSelected && !correct) c.classList.add('wrong');
+  });
+  const fb = document.getElementById('id-feedback');
+  fb.className = `id-feedback show ${correct?'ok':'err'}`;
+  fb.innerHTML = `<div class="id-feedback-label" style="color:${correct?'var(--green)':'var(--red)'}">${correct?'// ANALYSIS CONFIRMED':'// MISIDENTIFICATION'}</div>${ch.feedback}`;
+  document.getElementById('id-check-btn').style.display = 'none';
+  document.getElementById('id-next-btn').style.display = 'inline-block';
+  document.getElementById('id-next-btn').textContent = idIdx+1 < ID_CHALLENGES.length ? 'NEXT CASE →' : 'VIEW RESULTS';
+  updateIdProgress();
+}
+
+function nextIdChallenge() { idIdx++; loadIdChallenge(); }
+
+function showIdComplete() {
+  const pct = Math.round((idScore / ID_CHALLENGES.length)*100);
+  const grade = pct===100?'EXPERT ANALYST':pct>=75?'PROFICIENT':pct>=50?'DEVELOPING':'NEEDS REVIEW';
+  document.getElementById('id-terminal').innerHTML = `<span class="t-prompt">analyst@forensic-lab:~$</span> analysis_complete --report
+
+IDENTIFICATION ASSESSMENT COMPLETE
+===================================
+Cases reviewed: ${ID_CHALLENGES.length}
+Correctly identified: ${idScore}
+Accuracy rate: ${pct}%
+Analyst rating: <span class="t-${pct>=75?'cyan':'yellow'}">${grade}</span>
+
+${pct===100?'<span class="t-cyan">Perfect score. Expert-level malware identification.</span>':pct>=75?'<span class="t-cyan">Strong performance. Review missed cases.</span>':'<span class="t-yellow">Review the Specimen Lab to strengthen identification skills.</span>'}
+
+<span class="t-prompt">analyst@forensic-lab:~$</span> <span class="t-blink">█</span>`;
+  document.getElementById('id-question-text').textContent = `Assessment complete — ${idScore}/${ID_CHALLENGES.length} correct (${pct}%)`;
+  document.getElementById('id-choices').innerHTML = `<div style="margin-top:12px;"><button class="g-btn g-btn-primary" onclick="idIdx=0;idScore=0;idAnswered=[];loadIdChallenge()">RESTART CHALLENGE</button></div>`;
+  document.getElementById('id-feedback').className = 'id-feedback';
+  document.getElementById('id-check-btn').style.display = 'none';
+  document.getElementById('id-next-btn').style.display = 'none';
+}
+
+function updateIdProgress() {
+  const done=idAnswered.length, total=ID_CHALLENGES.length;
+  document.getElementById('id-prog-bar').style.width = Math.round((done/total)*100)+'%';
+  document.getElementById('id-prog-label').textContent = `${done} of ${total} completed`;
+  document.getElementById('id-score-label').textContent = `Score: ${idScore}/${total}`;
+}
+
+// ══════════════════════════════════════════════════════════
+// DEFENSE MATCHING
+// ══════════════════════════════════════════════════════════
+let matchSelected=null, matchedCount=0, matchState={};
+
+function initMatch() { matchSelected=null; matchedCount=0; matchState={}; renderMatch(); }
+
+function renderMatch() {
+  const threats  = document.getElementById('match-threats');
+  const defenses = document.getElementById('match-defenses');
+  threats.innerHTML = ''; defenses.innerHTML = '';
+  const shuffled = [...MATCH_DATA].sort(()=>Math.random()-0.5);
+  MATCH_DATA.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'match-item' + (matchState[item.threat]==='matched'?' matched':'');
+    div.dataset.threat = item.threat;
+    div.textContent = item.threat;
+    div.onclick = () => selectThreat(item.threat, div);
+    threats.appendChild(div);
+  });
+  shuffled.forEach(item => {
+    const div = document.createElement('div');
+    div.className = 'match-item' + (matchState[item.defense]==='matched'?' matched':'');
+    div.dataset.defense = item.defense;
+    div.dataset.forThreat = item.threat;
+    div.textContent = item.defense;
+    div.style.fontSize = '12px';
+    div.onclick = () => selectDefense(item.defense, item.threat, div);
+    defenses.appendChild(div);
+  });
+  document.getElementById('match-score').textContent = `${matchedCount}/8`;
+}
+
+function selectThreat(threat, el) {
+  if (matchState[threat]==='matched') return;
+  matchSelected = threat;
+  document.querySelectorAll('#match-threats .match-item').forEach(d => d.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('match-hint').textContent = `// Selected: "${threat}" — now click its matching defense`;
+}
+
+function selectDefense(defense, forThreat, el) {
+  if (!matchSelected) { document.getElementById('match-hint').textContent='// Select a malware type first.'; return; }
+  if (matchState[defense]==='matched') return;
+  if (matchSelected===forThreat) {
+    matchState[matchSelected]='matched'; matchState[defense]='matched'; matchedCount++;
+    document.getElementById('match-hint').textContent=`// ✓ CORRECT — "${matchSelected}" matched to "${defense}"`;
+    renderMatch(); matchSelected=null;
+    if (matchedCount===8) document.getElementById('match-hint').textContent='// ✓ ALL MATCHED — Excellent work!';
+  } else {
+    document.querySelectorAll('#match-defenses .match-item').forEach(d => {
+      if (d.dataset.defense===defense) { d.classList.add('wrong-flash'); setTimeout(()=>d.classList.remove('wrong-flash'),500); }
+    });
+    document.getElementById('match-hint').textContent=`// ✗ INCORRECT — "${defense}" does not match "${matchSelected}". Try again.`;
+  }
+}
+
+function resetMatch() { initMatch(); }
+
+// ══════════════════════════════════════════════════════════
+// KNOWLEDGE QUIZ
+// ══════════════════════════════════════════════════════════
+let quizAnswered=[], quizScores=[], quizSels=[], quizInit=false;
+
+function initQuiz() {
+  if (quizInit) return;
+  quizInit=true;
+  quizAnswered=new Array(QUIZ.length).fill(false);
+  quizScores  =new Array(QUIZ.length).fill(false);
+  quizSels    =new Array(QUIZ.length).fill(-1);
+  buildQuiz();
+}
+
+function buildQuiz() {
+  const container=document.getElementById('quiz-container');
+  container.innerHTML='';
+  const letters=['A','B','C','D'];
+  QUIZ.forEach((q,qi) => {
+    const card=document.createElement('div');
+    card.className='quiz-card'; card.id=`qcard-${qi}`;
+    card.innerHTML=`
+      <div class="q-hdr"><span class="q-num">Q${qi+1}</span><div class="q-text">${q.q}</div></div>
+      <div class="q-opts">
+        ${q.opts.map((o,oi)=>`<div class="q-opt" id="qopt-${qi}-${oi}" onclick="selQuizOpt(${qi},${oi})"><span class="q-key">${letters[oi]}</span><span>${o}</span></div>`).join('')}
+      </div>
+      <div class="q-foot">
+        <button class="q-check-btn" id="qbtn-${qi}" onclick="checkQuiz(${qi})" disabled>SUBMIT</button>
+        <div class="q-fb" id="qfb-${qi}"></div>
+      </div>`;
+    container.appendChild(card);
+  });
+}
+
+function selQuizOpt(qi,oi) {
+  if (quizAnswered[qi]) return;
+  quizSels[qi]=oi;
+  document.querySelectorAll(`[id^="qopt-${qi}-"]`).forEach((el,i)=>el.classList.toggle('sel',i===oi));
+  document.getElementById(`qbtn-${qi}`).disabled=false;
+}
+
+function checkQuiz(qi) {
+  if (quizAnswered[qi]||quizSels[qi]===-1) return;
+  quizAnswered[qi]=true;
+  const correct=QUIZ[qi].correct, userSel=quizSels[qi], isRight=userSel===correct;
+  quizScores[qi]=isRight;
+  document.querySelectorAll(`[id^="qopt-${qi}-"]`).forEach((el,oi)=>{
+    el.classList.add('dis');
+    if (oi===correct) el.classList.add('corr');
+    else if (oi===userSel&&!isRight) el.classList.add('wrng');
+  });
+  const fb=document.getElementById(`qfb-${qi}`);
+  fb.className=`q-fb show ${isRight?'ok':'err'}`;
+  fb.textContent=(isRight?'✓ Correct — ':'✗ Incorrect — ')+QUIZ[qi].explain;
+  document.getElementById(`qbtn-${qi}`).disabled=true;
+  document.getElementById(`qcard-${qi}`).classList.add(isRight?'q-correct':'q-wrong');
+  updateQuizProgress();
+}
+
+function updateQuizProgress() {
+  const total=QUIZ.length, done=quizAnswered.filter(Boolean).length, correct=quizScores.filter(Boolean).length;
+  document.getElementById('qp-bar').style.width=Math.round((done/total)*100)+'%';
+  document.getElementById('qp-label').textContent=`${done} of ${total} answered`;
+  document.getElementById('qp-score').textContent=`Score: ${correct}/${total}`;
+}
+
+// ══════════════════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════════════════
+renderSpecimens();
+initNetwork();
+window.addEventListener('resize', ()=>{ if (!simRunning) initNetwork(); });
+
+// Live clock
+const clockEl = document.createElement('div');
+clockEl.style.cssText='font-family:"Share Tech Mono",monospace;font-size:10px;color:var(--dim);margin-left:8px;';
+document.querySelector('.header-inner').appendChild(clockEl);
+setInterval(()=>{ clockEl.textContent=new Date().toLocaleTimeString('en-US',{hour12:false}); },1000);
+clockEl.textContent=new Date().toLocaleTimeString('en-US',{hour12:false});
+</script>
+</body>
+</html>
